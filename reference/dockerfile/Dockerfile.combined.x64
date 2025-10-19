@@ -1,0 +1,86 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install prerequisites
+# Install prerequisites along with libicu-dev for dotnet
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jre-headless unzip curl procps vim python3 python3-pip libicu-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------
+# Install .NET SDK using Microsoft's official installation method
+# ---------------------------------------------
+RUN apt-get update \
+    && apt-get install -y wget \
+    && wget https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
+    && dpkg -i packages-microsoft-prod.deb \
+    && rm packages-microsoft-prod.deb \
+    && apt-get update \
+    && apt-get install -y dotnet-sdk-8.0 \
+    && dotnet --version
+# ---------------------------------------------
+
+# ---------------------------------------------
+# Python stock-indicators via GitHub
+# ---------------------------------------------
+RUN pip3 install stock-indicators
+RUN pip3 install kaleido
+# ---------------------------------------------
+
+# Explicitly set SHELL environment variable to avoid pnpm error
+ENV SHELL=/bin/bash
+
+# Install Node.js v20 explicitly and pnpm
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g pnpm \
+    && pnpm setup \
+    && export PNPM_HOME="/root/.local/share/pnpm" \
+    && export PATH="$PNPM_HOME:$PATH" \
+    && node --version && npm --version && pnpm --version
+
+# Set pnpm path explicitly globally
+ENV PNPM_HOME="/root/.local/share/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+# IBKR Gateway setup
+RUN mkdir -p /app/gateway && cd /app/gateway && \
+    curl -O https://download2.interactivebrokers.com/portal/clientportal.gw.zip && \
+    unzip clientportal.gw.zip && \
+    cp -r bin build dist root /app/gateway/ && \
+    rm clientportal.gw.zip
+
+# Copy configuration files
+COPY conf.yaml /app/gateway/root/conf.yaml
+COPY webapp/ /app/webapp/
+COPY scripts/ /app/scripts/
+COPY start.sh /app/start.sh
+COPY combined_start.sh /app/combined_start.sh
+
+# Fix permissions and ensure unix line endings
+RUN chmod +x /app/start.sh /app/combined_start.sh && \
+    sed -i 's/\r$//' /app/combined_start.sh /app/start.sh
+
+# SSL certificates for Flask
+COPY webapp/cert.pem /app/webapp/cert.pem
+COPY webapp/key.pem /app/webapp/key.pem
+
+# Python dependencies unchanged
+COPY requirements.txt /app/requirements.txt
+RUN pip3 install --no-cache-dir setuptools
+RUN pip3 install --no-cache-dir -r /app/requirements.txt
+
+# Install n8n globally via npm
+RUN npm install -g n8n
+# RUN npx n8n
+
+# Install playwright nodes globally via pnpm
+RUN pnpm add -g n8n-nodes-playwright
+
+COPY .env /app/.env
+
+EXPOSE 5000 5056 5678
+
+CMD ["/bin/bash", "/app/combined_start.sh"] 

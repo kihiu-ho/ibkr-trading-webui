@@ -1,0 +1,136 @@
+version: '3.8'
+
+services:
+  # IBKR Client Portal Gateway
+  ibkr-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ibkr-gateway
+    container_name: ibkr-gateway
+    environment:
+      IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID}"
+    ports:
+      - "5055:5055"  # IBKR Gateway API
+    volumes:
+      - ./conf.yaml:/app/gateway/root/conf.yaml
+    networks:
+      - trading-network
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ibkr-postgres
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - trading-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: ibkr-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ACCESS_KEY}"
+      MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY}"
+    ports:
+      - "9000:9000"  # MinIO API
+      - "9001:9001"  # MinIO Console
+    volumes:
+      - minio-data:/data
+    networks:
+      - trading-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    image: ibkr-backend
+    container_name: ibkr-backend
+    environment:
+      # Database
+      DATABASE_URL: "${DATABASE_URL}"
+      # IBKR
+      IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID}"
+      IBKR_API_BASE_URL: "${IBKR_API_BASE_URL}"
+      IBKR_SSL_VERIFY: "${IBKR_SSL_VERIFY}"
+      # MinIO
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT}"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY}"
+      MINIO_BUCKET: "${MINIO_BUCKET}"
+      MINIO_SECURE: "${MINIO_SECURE}"
+      # OpenAI
+      OPENAI_API_BASE: "${OPENAI_API_BASE}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      OPENAI_MODEL: "${OPENAI_MODEL}"
+      AI_REQUEST_TIMEOUT: "${AI_REQUEST_TIMEOUT}"
+      # App config
+      ENVIRONMENT: "${ENVIRONMENT}"
+      DEBUG: "${DEBUG}"
+      LOG_LEVEL: "${LOG_LEVEL}"
+      SECRET_KEY: "${SECRET_KEY}"
+      # Risk management
+      MIN_R_COEFFICIENT: "${MIN_R_COEFFICIENT}"
+      MIN_PROFIT_MARGIN: "${MIN_PROFIT_MARGIN}"
+      RISK_PER_TRADE: "${RISK_PER_TRADE}"
+      MAX_PORTFOLIO_EXPOSURE: "${MAX_PORTFOLIO_EXPOSURE}"
+      MAX_OPEN_POSITIONS: "${MAX_OPEN_POSITIONS}"
+      MAX_POSITION_SIZE: "${MAX_POSITION_SIZE}"
+      # Trading
+      DEFAULT_TIF: "${DEFAULT_TIF}"
+      DEFAULT_ORDER_TYPE: "${DEFAULT_ORDER_TYPE}"
+      WORKFLOW_DELAY_SECONDS: "${WORKFLOW_DELAY_SECONDS}"
+      # Features
+      AUTO_TRADING_ENABLED: "${AUTO_TRADING_ENABLED}"
+      PAPER_TRADING_MODE: "${PAPER_TRADING_MODE}"
+    ports:
+      - "8000:8000"  # FastAPI
+    volumes:
+      - ./backend:/app/backend
+      - ./frontend/templates:/app/frontend/templates
+      - ./frontend/static:/app/frontend/static
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      ibkr-gateway:
+        condition: service_started
+    networks:
+      - trading-network
+    restart: unless-stopped
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgres-data:
+    driver: local
+  minio-data:
+    driver: local
+
+networks:
+  trading-network:
+    driver: bridge
+

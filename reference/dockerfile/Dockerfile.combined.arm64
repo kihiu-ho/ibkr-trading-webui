@@ -1,0 +1,85 @@
+FROM --platform=linux/arm64 python:3.12-slim
+
+WORKDIR /app
+
+# Install prerequisites
+# Install prerequisites along with libicu-dev for dotnet
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jre-headless unzip curl procps vim python3 python3-pip libicu-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------
+# Install .NET SDK using Microsoft's official installation method (ARM64)
+# ---------------------------------------------
+
+    ENV DOTNET_ROOT=/opt/dotnet
+    ENV PATH=$PATH:$DOTNET_ROOT
+    RUN curl -fsSL https://download.visualstudio.microsoft.com/download/pr/52daf653-e6d8-4915-aea1-9c2e2be169a5/9f3e289918eb9054770b69c0b100bb8f/dotnet-sdk-9.0.202-linux-arm64.tar.gz \
+        -o dotnet-sdk.tar.gz && \
+        mkdir -p $DOTNET_ROOT && \
+        tar zxf dotnet-sdk.tar.gz -C $DOTNET_ROOT && \
+        rm dotnet-sdk.tar.gz && \
+        ln -s $DOTNET_ROOT/dotnet /usr/bin/dotnet && \
+        dotnet --version
+# ---------------------------------------------
+
+# ---------------------------------------------
+# Python stock-indicators via GitHub
+# ---------------------------------------------
+RUN pip3 install stock-indicators
+RUN pip3 install kaleido
+# ---------------------------------------------
+
+# Explicitly set SHELL environment variable to avoid pnpm error
+ENV SHELL=/bin/bash
+
+# Install Node.js v20 explicitly and pnpm
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g pnpm \
+    && pnpm setup \
+    && export PNPM_HOME="/root/.local/share/pnpm" \
+    && export PATH="$PNPM_HOME:$PATH" \
+    && node --version && npm --version && pnpm --version
+
+# Set pnpm path explicitly globally
+ENV PNPM_HOME="/root/.local/share/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+# IBKR Gateway setup (same as previous)
+RUN mkdir -p gateway && cd gateway && \
+    curl -O https://download2.interactivebrokers.com/portal/clientportal.gw.zip && \
+    unzip clientportal.gw.zip && rm clientportal.gw.zip
+
+COPY conf.yaml gateway/root/conf.yaml
+COPY webapp/ /app/webapp/
+COPY scripts/ /app/scripts/
+COPY start.sh /app/start.sh
+COPY combined_start.sh /app/combined_start.sh
+
+# Fix permissions and ensure unix line endings
+RUN chmod +x /app/start.sh /app/combined_start.sh && \
+    sed -i 's/\r$//' /app/combined_start.sh /app/start.sh
+
+# SSL certificates for Flask
+COPY webapp/cert.pem /app/webapp/cert.pem
+COPY webapp/key.pem /app/webapp/key.pem
+
+# Python dependencies unchanged
+COPY requirements.txt /app/requirements.txt
+RUN pip3 install --no-cache-dir setuptools
+RUN pip3 install --no-cache-dir -r /app/requirements.txt
+
+# Install n8n globally via npm
+RUN npm install -g n8n
+# RUN npx n8n
+
+# Install playwright nodes globally via pnpm
+RUN pnpm add -g n8n-nodes-playwright
+
+COPY .env /app/.env
+
+EXPOSE 5000 5056 5678 5681
+
+CMD ["/bin/bash", "/app/combined_start.sh"] 
