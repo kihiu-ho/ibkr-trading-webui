@@ -6,7 +6,7 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 BASE_API_URL = "https://localhost:5055/v1/api"
-ACCOUNT_ID = os.environ['IBKR_ACCOUNT_ID']
+ACCOUNT_ID = os.environ.get('IBKR_ACCOUNT_ID', '')  # Default to empty string if not set
 
 os.environ['PYTHONHTTPSVERIFY'] = '0'
 

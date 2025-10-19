@@ -1,0 +1,195 @@
+version: '3.8'
+
+services:
+  # IBKR Gateway (existing)
+  ibkr-gateway:
+    build: .
+    image: ibkr-gateway
+    container_name: ibkr-gateway
+    environment:
+      IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID}"
+    ports:
+      - "5055:5055"
+    volumes:
+      - ./conf.yaml:/app/gateway/root/conf.yaml
+    networks:
+      - trading-network
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ibkr-postgres
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-ibkr_user}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-change_me}"
+      POSTGRES_DB: "${POSTGRES_DB:-ibkr_trading}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - trading-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ibkr_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (Message Broker)
+  redis:
+    image: redis:7-alpine
+    container_name: ibkr-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - trading-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    container_name: ibkr-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-minioadmin}"
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    volumes:
+      - minio-data:/data
+    networks:
+      - trading-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    image: ibkr-backend
+    container_name: ibkr-backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-ibkr_user}:${POSTGRES_PASSWORD:-change_me}@postgres:5432/${POSTGRES_DB:-ibkr_trading}"
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      ibkr-gateway:
+        condition: service_started
+    networks:
+      - trading-network
+    restart: unless-stopped
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    image: ibkr-backend
+    container_name: ibkr-celery-worker
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-ibkr_user}:${POSTGRES_PASSWORD:-change_me}@postgres:5432/${POSTGRES_DB:-ibkr_trading}"
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+    volumes:
+      - ./backend:/app/backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - trading-network
+    restart: unless-stopped
+    command: celery -A backend.celery_app worker --loglevel=info --concurrency=2
+
+  # Celery Beat (Scheduler)
+  celery-beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    image: ibkr-backend
+    container_name: ibkr-celery-beat
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-ibkr_user}:${POSTGRES_PASSWORD:-change_me}@postgres:5432/${POSTGRES_DB:-ibkr_trading}"
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+    volumes:
+      - ./backend:/app/backend
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - trading-network
+    restart: unless-stopped
+    command: celery -A backend.celery_app beat --loglevel=info
+
+  # Flower (Celery Monitoring) - Optional
+  flower:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    image: ibkr-backend
+    container_name: ibkr-flower
+    env_file:
+      - .env
+    environment:
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - trading-network
+    restart: unless-stopped
+    command: celery -A backend.celery_app flower --port=5555
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  minio-data:
+    driver: local
+
+networks:
+  trading-network:
+    driver: bridge
+
