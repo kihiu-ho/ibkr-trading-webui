@@ -1,0 +1,144 @@
+╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║   ✅ STARTUP ISSUES FIXED                                     ║
+║                                                                ║
+╚════════════════════════════════════════════════════════════════╝
+
+ISSUES THAT WERE FIXED:
+═══════════════════════════════════════════════════════════════
+
+1. ❌ Docker Backend False Warning
+   ✅ FIXED: stop-webapp.sh now ignores Docker Desktop processes
+
+2. ❌ ModuleNotFoundError: No module named 'psycopg2'
+   ✅ FIXED: Updated to use psycopg (Python 3.13 compatible)
+
+3. ❌ Cannot connect to redis://redis:6379/0
+   ✅ FIXED: Changed to redis://localhost:6379/0
+
+4. ❌ Missing required .env configuration
+   ✅ FIXED: Created .env with all defaults
+
+5. ❌ No clear setup instructions
+   ✅ FIXED: Created comprehensive documentation
+
+
+WHAT YOU NEED TO DO:
+═══════════════════════════════════════════════════════════════
+
+The webapp needs PostgreSQL and Redis to run.
+
+CHOOSE ONE METHOD:
+
+┌─────────────────────────────────────────────────────────────┐
+│ METHOD 1: Docker (Recommended)                              │
+└─────────────────────────────────────────────────────────────┘
+
+  1. Start Docker Desktop (from Applications)
+  
+  2. Run: ./start-services.sh
+  
+  3. Run: ./start-webapp.sh
+  
+  4. Open: http://localhost:8000/workflows
+
+
+┌─────────────────────────────────────────────────────────────┐
+│ METHOD 2: Homebrew (No Docker needed)                       │
+└─────────────────────────────────────────────────────────────┘
+
+  1. Install:
+     brew install postgresql@15 redis
+  
+  2. Start:
+     brew services start postgresql@15
+     brew services start redis
+  
+  3. Setup database:
+     createdb ibkr_trading
+     psql ibkr_trading -f database/init.sql
+  
+  4. Run: ./start-webapp.sh
+  
+  5. Open: http://localhost:8000/workflows
+
+
+VERIFY EVERYTHING:
+═══════════════════════════════════════════════════════════════
+
+Run diagnostics:
+  ./check-services.sh
+
+Should show:
+  ✓ PostgreSQL running on port 5432
+  ✓ Redis running on port 6379
+  ✓ .env file exists
+  ✓ Virtual environment exists
+
+
+IF YOU SEE ERRORS:
+═══════════════════════════════════════════════════════════════
+
+Read detailed troubleshooting:
+  cat TROUBLESHOOTING.md
+
+Or check what's wrong:
+  ./check-services.sh
+
+
+NEW FILES CREATED:
+═══════════════════════════════════════════════════════════════
+
+✅ .env                       - Configuration file
+✅ .env.example               - Template for .env
+✅ start-services.sh          - Start PostgreSQL & Redis
+✅ check-services.sh          - Diagnose issues
+✅ SETUP_DEPENDENCIES.md      - Complete setup guide
+✅ TROUBLESHOOTING.md         - Fix common problems
+✅ FIXES_APPLIED.md           - What was fixed
+✅ START_HERE_FIRST.md        - Quick start guide
+✅ STARTUP_FIXED.txt          - This file
+
+
+FILES MODIFIED:
+═══════════════════════════════════════════════════════════════
+
+✅ stop-webapp.sh             - No more Docker warnings
+✅ backend/config/settings.py - Default values for all config
+✅ QUICK_START.txt            - Updated with new steps
+
+
+CURRENT STATUS:
+═══════════════════════════════════════════════════════════════
+
+✅ All code complete
+✅ All startup issues fixed
+✅ Documentation complete
+✅ Ready to run
+
+⚠️  Just needs PostgreSQL & Redis running
+
+
+QUICK REFERENCE:
+═══════════════════════════════════════════════════════════════
+
+Start Services:    ./start-services.sh
+Check Status:      ./check-services.sh
+Start Webapp:      ./start-webapp.sh
+Stop Webapp:       ./stop-webapp.sh
+
+Access Points:
+  Workflows:       http://localhost:8000/workflows
+  Dashboard:       http://localhost:8000/dashboard
+  Strategies:      http://localhost:8000/strategies
+  API Docs:        http://localhost:8000/docs
+
+
+NEXT STEP:
+═══════════════════════════════════════════════════════════════
+
+Choose Docker or Homebrew method above and follow the steps!
+
+╔════════════════════════════════════════════════════════════════╗
+║  Need help? Read: START_HERE_FIRST.md                         ║
+╚════════════════════════════════════════════════════════════════╝

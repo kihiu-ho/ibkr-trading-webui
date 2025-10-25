@@ -1,0 +1,72 @@
+╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║   🎉 ULTIMATE QUICK START - ONE COMMAND!                      ║
+║                                                                ║
+╚════════════════════════════════════════════════════════════════╝
+
+SIMPLIFIED STARTUP:
+═══════════════════════════════════════════════════════════════
+
+The scripts have been combined! Now just ONE command starts everything:
+
+    ./start-webapp.sh
+
+This automatically:
+  ✅ Detects if Docker is running
+  ✅ Starts PostgreSQL & Redis (Docker or Homebrew)
+  ✅ Starts FastAPI backend
+  ✅ Starts Celery worker
+  ✅ Shows access URLs
+
+
+CHOOSE YOUR METHOD:
+═══════════════════════════════════════════════════════════════
+
+METHOD 1: Docker (Easiest)
+───────────────────────────────────────────────────────────────
+1. Start Docker Desktop from Applications
+2. ./start-webapp.sh
+3. Open: http://localhost:8000/workflows
+
+Done! ✨
+
+
+METHOD 2: Homebrew (No Docker)
+───────────────────────────────────────────────────────────────
+1. brew install postgresql@15 redis
+2. brew services start postgresql@15 redis
+3. createdb ibkr_trading
+4. ./start-webapp.sh
+5. Open: http://localhost:8000/workflows
+
+Done! ✨
+
+
+STOPPING:
+═══════════════════════════════════════════════════════════════
+
+Stop webapp only:    ./stop-webapp.sh
+Stop everything:     ./stop-all.sh
+
+
+ALL FIXES APPLIED:
+═══════════════════════════════════════════════════════════════
+✅ ImportError: WorkflowExecution - FIXED
+✅ Missing tenacity module - FIXED
+✅ Automatic service detection - ADDED
+✅ One-command startup - IMPLEMENTED
+
+
+THAT'S IT:
+═══════════════════════════════════════════════════════════════
+
+Just run: ./start-webapp.sh
+
+Everything else is automatic!
+
+
+Need details? Read: ONE_COMMAND_START.md
+
+╔════════════════════════════════════════════════════════════════╗
+║  One command to rule them all: ./start-webapp.sh              ║
+╚════════════════════════════════════════════════════════════════╝

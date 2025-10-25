@@ -1,0 +1,26 @@
+{
+  "name": "ibkr-trading-webui",
+  "version": "1.0.0",
+  "description": "Interactive Brokers Trading WebUI with LLM-powered strategies",
+  "scripts": {
+    "build:css": "tailwindcss -i ./frontend/static/css/input.css -o ./frontend/static/css/output.css --minify",
+    "watch:css": "tailwindcss -i ./frontend/static/css/input.css -o ./frontend/static/css/output.css --watch",
+    "dev": "npm run watch:css"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "@tailwindcss/forms": "^0.5.7"
+  },
+  "keywords": [
+    "trading",
+    "ibkr",
+    "technical-analysis",
+    "llm",
+    "autogen"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+

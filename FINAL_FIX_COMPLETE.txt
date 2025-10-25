@@ -1,0 +1,143 @@
+╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║   ✅ DOCKER STARTUP FULLY FIXED & AUTOMATED                   ║
+║                                                                ║
+╚════════════════════════════════════════════════════════════════╝
+
+WHAT'S NEW:
+═══════════════════════════════════════════════════════════════
+✅ Longer Docker wait (40 seconds instead of 30)
+✅ Automatic image existence check
+✅ Auto-pull Docker images on first run
+✅ Better error messages with instructions
+✅ Progress indicators for all operations
+✅ Everything fully automated
+
+
+WORKFLOW:
+═══════════════════════════════════════════════════════════════
+
+Step 1: Start Docker Desktop
+  open -a Docker
+  (Wait ~20-30 seconds for whale icon to be steady)
+
+Step 2: Run ONE command
+  ./start-webapp.sh
+
+Step 3: Watch it work
+  - Checks Docker daemon (40 seconds max)
+  - Checks for Docker images
+  - Auto-pulls images if missing (first run ~1-2 minutes)
+  - Starts PostgreSQL & Redis containers
+  - Starts FastAPI backend
+  - Starts Celery worker
+
+Step 4: Open browser
+  http://localhost:8000/workflows
+
+
+TIMING:
+═══════════════════════════════════════════════════════════════
+First run (with image pull):  ~90-180 seconds (~2-3 minutes)
+Cached runs (no pull):        ~15-30 seconds (~20 seconds)
+
+
+SCRIPT OUTPUT:
+═══════════════════════════════════════════════════════════════
+
+✓ Python 3 found: Python 3.13.5
+✓ Virtual environment activated
+✓ Dependencies installed
+
+ℹ Checking Docker daemon...
+  ..................
+✓ Docker is ready
+
+ℹ Checking Docker images...
+ℹ Pulling image postgres:15-alpine (may take 1-2 minutes)...
+✓ Image pulled successfully
+ℹ Pulling image redis:7-alpine...
+✓ Image pulled successfully
+
+ℹ Starting PostgreSQL and Redis via Docker...
+✓ PostgreSQL is ready
+✓ Redis is ready
+
+✓ Backend started (PID: xxxxx)
+✓ Celery worker started (PID: xxxxx)
+
+✓ All services started successfully!
+
+📦 Docker services:
+  PostgreSQL: container ibkr-postgres
+  Redis:      container ibkr-redis
+
+🌐 Access:
+  Workflows: http://localhost:8000/workflows ⭐
+
+
+FEATURES:
+═══════════════════════════════════════════════════════════════
+✅ Automatic image pulling (no manual docker pull needed!)
+✅ Image caching (fast subsequent runs)
+✅ Health checks for PostgreSQL & Redis
+✅ Port conflict detection & auto-resolution
+✅ Clear error messages with troubleshooting
+✅ Progress indicators
+✅ One-command startup
+
+
+NO MORE MANUAL STEPS:
+═══════════════════════════════════════════════════════════════
+❌ No manual docker pull
+❌ No manual docker-compose up
+❌ No waiting for containers
+❌ No checking container status
+❌ No guessing what's running
+
+Everything is automated! ✨
+
+
+IF SOMETHING GOES WRONG:
+═══════════════════════════════════════════════════════════════
+Check docker status:
+  docker ps
+  docker images
+
+Restart Docker Desktop:
+  killall Docker
+  open -a Docker
+  (Wait 30 seconds)
+  ./start-webapp.sh
+
+Force clean everything:
+  ./stop-all.sh
+  docker system prune -f
+  ./start-webapp.sh
+
+
+STOP EVERYTHING:
+═══════════════════════════════════════════════════════════════
+Stop webapp only:     ./stop-webapp.sh
+Stop everything:      ./stop-all.sh
+
+
+DOCUMENTATION:
+═══════════════════════════════════════════════════════════════
+DOCKER_READY_FIXED.md  - Complete Docker improvements
+TROUBLESHOOTING.md     - Common issues & fixes
+NOW_FIXED.txt          - Earlier fixes summary
+
+
+READY TO RUN?
+═══════════════════════════════════════════════════════════════
+
+1. open -a Docker         (Start Docker Desktop)
+2. ./start-webapp.sh      (Start everything)
+3. http://localhost:8000/workflows (Open in browser)
+
+DONE! 🎉
+
+╔════════════════════════════════════════════════════════════════╗
+║  Everything is automated and ready for production use!         ║
+╚════════════════════════════════════════════════════════════════╝

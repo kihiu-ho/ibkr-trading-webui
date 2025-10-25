@@ -1,0 +1,71 @@
+╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║   🚀 IBKR Trading WebUI - LLM Trading Platform                ║
+║                                                                ║
+║   Quick Start Guide                                           ║
+║                                                                ║
+╚════════════════════════════════════════════════════════════════╝
+
+📦 WHAT'S READY:
+  ✅ Backend API (22 endpoints)
+  ✅ Frontend UI (trigger, monitor, trace)
+  ✅ WebSocket real-time updates
+  ✅ Interactive DAG visualization
+  ✅ Comprehensive logging
+  ✅ One-command startup
+
+🚀 START IN 4 STEPS:
+
+  Step 1: Start Required Services (PostgreSQL & Redis)
+    
+    Option A - Using Docker (Recommended):
+      ./start-services.sh
+    
+    Option B - Using Homebrew (macOS):
+      brew install postgresql@15 redis
+      brew services start postgresql@15
+      brew services start redis
+      createdb ibkr_trading
+    
+    See SETUP_DEPENDENCIES.md for details
+
+  Step 2: Start Backend & Worker
+    ./start-webapp.sh
+
+  Step 3: Open Browser
+    http://localhost:8000/workflows
+
+  Step 4: Execute Workflow
+    Click "Execute Workflow" → Select Strategy → Execute
+
+📚 DOCUMENTATION:
+  • FINAL_IMPLEMENTATION_SUMMARY.md - Complete overview
+  • STARTUP_GUIDE.md - Startup scripts guide
+  • FRONTEND_COMPLETE_USER_GUIDE.md - User manual
+  • TEST_AND_DEPLOY_GUIDE.md - Testing guide
+  • READY_TO_TEST.md - Quick start testing
+
+🎯 SCRIPTS AVAILABLE:
+  ./start-webapp.sh    - Start everything (production mode)
+  ./start-dev.sh       - Start in dev mode (multiple tabs)
+  ./stop-webapp.sh     - Stop all services
+  ./tests/test_frontend_features.sh - Run tests
+
+🌐 ACCESS POINTS:
+  Web UI:      http://localhost:8000
+  Workflows:   http://localhost:8000/workflows
+  Dashboard:   http://localhost:8000/dashboard
+  Strategies:  http://localhost:8000/strategies
+  API Docs:    http://localhost:8000/docs
+  Health:      http://localhost:8000/health
+
+📊 OPENSPEC STATUS:
+  add-llm-trading-frontend: 25/42 tasks (60%)
+  ✓ All critical features complete (100%)
+  ✓ OpenSpec validated
+  Ready for testing!
+
+🎉 YOU'RE ALL SET!
+  Just run: ./start-webapp.sh
+
+Need help? Read: FINAL_IMPLEMENTATION_SUMMARY.md

@@ -62,8 +62,18 @@
                         <td class="px-6 py-4 whitespace-nowrap">
                             <div class="text-sm font-medium text-gray-900" x-text="strategy.name"></div>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="text-sm text-gray-900" x-text="strategy.code"></div>
+                        <td class="px-6 py-4">
+                            <div class="text-sm text-gray-900">
+                                <template x-if="strategy.codes && strategy.codes.length > 0">
+                                    <div>
+                                        <span x-text="strategy.codes.map(c => c.symbol).join(', ')"></span>
+                                        <span class="ml-2 text-xs text-gray-500" x-text="`(${strategy.codes.length})`"></span>
+                                    </div>
+                                </template>
+                                <template x-if="!strategy.codes || strategy.codes.length === 0">
+                                    <span class="text-gray-400">No symbols</span>
+                                </template>
+                            </div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <div class="text-sm text-gray-500" x-text="strategy.workflow_name || 'Default'"></div>
@@ -109,8 +119,34 @@
                         <input x-model="formData.name" type="text" required class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Symbol *</label>
-                        <input x-model="formData.code" type="text" required class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Symbols</label>
+                        <div class="flex gap-2 mb-2">
+                            <select x-model="selectedSymbolToAdd" class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                <option value="">Select a symbol...</option>
+                                <template x-for="symbol in availableSymbols" :key="symbol.id">
+                                    <option :value="symbol.id" x-text="`${symbol.symbol} (${symbol.name || 'conid: ' + symbol.conid})`"></option>
+                                </template>
+                            </select>
+                            <button type="button" @click="addSymbol()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm">
+                                <i class="fa fa-plus"></i> Add
+                            </button>
+                            <a href="/symbols" target="_blank" class="px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-md text-sm text-blue-700">
+                                <i class="fa fa-search"></i> Lookup
+                            </a>
+                        </div>
+                        <div class="flex flex-wrap gap-2 min-h-[2rem] p-2 border border-gray-300 rounded-md">
+                            <template x-for="symbolId in formData.symbol_ids" :key="symbolId">
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
+                                    <span x-text="getSymbolName(symbolId)"></span>
+                                    <button type="button" @click="removeSymbol(symbolId)" class="ml-2 text-blue-600 hover:text-blue-800">
+                                        <i class="fa fa-times"></i>
+                                    </button>
+                                </span>
+                            </template>
+                            <template x-if="formData.symbol_ids.length === 0">
+                                <span class="text-gray-400 text-sm">No symbols selected</span>
+                            </template>
+                        </div>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Workflow</label>
@@ -120,6 +156,36 @@
                                 <option :value="workflow.id" x-text="workflow.name"></option>
                             </template>
                         </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Indicators</label>
+                        <div class="flex gap-2 mb-2">
+                            <select x-model="selectedIndicatorToAdd" class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                <option value="">Select an indicator...</option>
+                                <template x-for="indicator in availableIndicators" :key="indicator.id">
+                                    <option :value="indicator.id" x-text="`${indicator.name} (${indicator.type})`"></option>
+                                </template>
+                            </select>
+                            <button type="button" @click="addIndicator()" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm">
+                                <i class="fa fa-plus"></i> Add
+                            </button>
+                            <a href="/indicators" target="_blank" class="px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-md text-sm text-blue-700">
+                                <i class="fa fa-cog"></i> Manage
+                            </a>
+                        </div>
+                        <div class="flex flex-wrap gap-2 min-h-[2rem] p-2 border border-gray-300 rounded-md">
+                            <template x-for="indicatorId in formData.indicator_ids" :key="indicatorId">
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
+                                    <span x-text="getIndicatorName(indicatorId)"></span>
+                                    <button type="button" @click="removeIndicator(indicatorId)" class="ml-2 text-green-600 hover:text-green-800">
+                                        <i class="fa fa-times"></i>
+                                    </button>
+                                </span>
+                            </template>
+                            <template x-if="formData.indicator_ids.length === 0">
+                                <span class="text-gray-400 text-sm">No indicators selected</span>
+                            </template>
+                        </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
@@ -156,6 +222,10 @@
         return {
             strategies: [],
             workflows: [],
+            availableSymbols: [],
+            availableIndicators: [],
+            selectedSymbolToAdd: '',
+            selectedIndicatorToAdd: '',
             filters: {
                 active: '',
                 search: ''
@@ -164,8 +234,9 @@
             editingStrategy: null,
             formData: {
                 name: '',
-                code: '',
                 workflow_id: '',
+                symbol_ids: [],
+                indicator_ids: [],
                 param: {
                     account_size: 100000,
                     risk_per_trade: 0.02
@@ -176,6 +247,8 @@
             async init() {
                 await this.loadStrategies();
                 await this.loadWorkflows();
+                await this.loadAvailableSymbols();
+                await this.loadAvailableIndicators();
             },
             
             async loadStrategies() {
@@ -212,6 +285,60 @@
                 }
             },
             
+            async loadAvailableSymbols() {
+                try {
+                    const response = await fetch('/api/symbols/saved');
+                    if (response.ok) {
+                        this.availableSymbols = await response.json();
+                    }
+                } catch (error) {
+                    console.error('Failed to load symbols:', error);
+                }
+            },
+            
+            async loadAvailableIndicators() {
+                try {
+                    const response = await fetch('/api/indicators');
+                    if (response.ok) {
+                        this.availableIndicators = await response.json();
+                    }
+                } catch (error) {
+                    console.error('Failed to load indicators:', error);
+                }
+            },
+            
+            addSymbol() {
+                if (this.selectedSymbolToAdd && !this.formData.symbol_ids.includes(parseInt(this.selectedSymbolToAdd))) {
+                    this.formData.symbol_ids.push(parseInt(this.selectedSymbolToAdd));
+                    this.selectedSymbolToAdd = '';
+                }
+            },
+            
+            removeSymbol(symbolId) {
+                this.formData.symbol_ids = this.formData.symbol_ids.filter(id => id !== symbolId);
+            },
+            
+            getSymbolName(symbolId) {
+                const symbol = this.availableSymbols.find(s => s.id === symbolId);
+                return symbol ? symbol.symbol : `ID: ${symbolId}`;
+            },
+            
+            addIndicator() {
+                if (this.selectedIndicatorToAdd && !this.formData.indicator_ids.includes(parseInt(this.selectedIndicatorToAdd))) {
+                    this.formData.indicator_ids.push(parseInt(this.selectedIndicatorToAdd));
+                    this.selectedIndicatorToAdd = '';
+                }
+            },
+            
+            removeIndicator(indicatorId) {
+                this.formData.indicator_ids = this.formData.indicator_ids.filter(id => id !== indicatorId);
+            },
+            
+            getIndicatorName(indicatorId) {
+                const indicator = this.availableIndicators.find(i => i.id === indicatorId);
+                return indicator ? `${indicator.name} (${indicator.type})` : `ID: ${indicatorId}`;
+            },
+            
             async executeStrategy(id) {
                 if (!confirm('Execute this strategy workflow?')) return;
                 
@@ -235,8 +362,9 @@
                 this.editingStrategy = strategy;
                 this.formData = {
                     name: strategy.name,
-                    code: strategy.code,
                     workflow_id: strategy.workflow_id || '',
+                    symbol_ids: strategy.codes ? strategy.codes.map(c => c.id) : [],
+                    indicator_ids: strategy.indicators ? strategy.indicators.map(i => i.id) : [],
                     param: strategy.param || { account_size: 100000, risk_per_trade: 0.02 },
                     active: strategy.active
                 };
@@ -287,10 +415,13 @@
             closeModal() {
                 this.showCreateModal = false;
                 this.editingStrategy = null;
+                this.selectedSymbolToAdd = '';
+                this.selectedIndicatorToAdd = '';
                 this.formData = {
                     name: '',
-                    code: '',
                     workflow_id: '',
+                    symbol_ids: [],
+                    indicator_ids: [],
                     param: { account_size: 100000, risk_per_trade: 0.02 },
                     active: true
                 };

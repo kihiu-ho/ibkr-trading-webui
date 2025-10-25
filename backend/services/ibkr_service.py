@@ -12,7 +12,7 @@ class IBKRService:
     """Service for interacting with IBKR Client Portal Gateway API."""
     
     def __init__(self):
-        self.base_url = settings.IBKR_API_URL
+        self.base_url = settings.IBKR_API_BASE_URL
         self.account_id = settings.IBKR_ACCOUNT_ID
         self.timeout = 30.0
     

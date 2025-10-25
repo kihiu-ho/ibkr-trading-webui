@@ -12,6 +12,11 @@ class AIService:
     """Service for AI-powered analysis using OpenAI-compatible APIs."""
     
     def __init__(self):
+        logger.info(f"🔧 Initializing AIService with OpenAI-compatible API")
+        logger.info(f"   Base URL (from .env): {settings.OPENAI_API_BASE}")
+        logger.info(f"   Model: {settings.OPENAI_MODEL}")
+        logger.info(f"   API Key configured: {'Yes' if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY != 'your_key_here' else 'No'}")
+        
         self.client = openai.OpenAI(
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.OPENAI_API_BASE

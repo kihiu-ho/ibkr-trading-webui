@@ -1,0 +1,31 @@
+ 
+ -------------- celery@Hs-Mac-mini.local v5.5.3 (immunity)
+--- ***** ----- 
+-- ******* ---- macOS-26.0.1-arm64-arm-64bit-Mach-O 2025-10-19 21:19:55
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         ibkr_trading:0x10c38a120
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/1
+- *** --- * --- .> concurrency: 2 (prefork)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> celery           exchange=celery(direct) key=celery
+                
+
+[tasks]
+  . test_task
+
+[2025-10-19 21:19:55,997: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2025-10-19 21:19:55,998: INFO/MainProcess] mingle: searching for neighbors
+[2025-10-19 21:19:57,003: INFO/MainProcess] mingle: all alone
+[2025-10-19 21:19:57,015: INFO/MainProcess] celery@Hs-Mac-mini.local ready.
+
+worker: Hitting Ctrl+C again will initiate cold shutdown, terminating all running tasks!
+
+worker: Warm shutdown (MainProcess)
+
+worker: Warm shutdown (MainProcess)
+
+worker: Warm shutdown (MainProcess)

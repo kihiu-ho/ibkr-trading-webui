@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+
+{% block title %}Workflow Execution{% if execution %} - {{ execution.strategy_name }}{% endif %} - IBKR Trading{% endblock %}
+{% block page_title %}Workflow Execution{% endblock %}
+
+{% block content %}
+<div x-data="workflowExecution({{ execution_id }})" x-init="init()">
+    <!-- Header with Controls -->
+    <div class="mb-6 bg-white shadow rounded-lg p-6">
+        <div class="flex items-center justify-between">
+            <div class="flex-1">
+                <h2 class="text-2xl font-bold text-gray-900" x-text="execution.strategy_name || 'Loading...'"></h2>
+                <p class="mt-1 text-sm text-gray-500">
+                    <span x-text="execution.workflow_name || ''"></span>
+                    <template x-if="execution.started_at">
+                        <span> • Started <span x-text="formatDate(execution.started_at)"></span></span>
+                    </template>
+                </p>
+            </div>
+            
+            <!-- Status Badge -->
+            <div class="flex items-center gap-x-4">
+                <span 
+                    x-show="execution.status"
+                    :class="{
+                        'bg-blue-100 text-blue-800': execution.status === 'running',
+                        'bg-green-100 text-green-800': execution.status === 'completed',
+                        'bg-red-100 text-red-800': execution.status === 'failed',
+                        'bg-yellow-100 text-yellow-800': execution.status === 'stopped',
+                        'bg-gray-100 text-gray-800': execution.status === 'pending'
+                    }"
+                    class="px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-x-2"
+                >
+                    <i 
+                        :class="{
+                            'fa fa-spinner fa-spin': execution.status === 'running',
+                            'fa fa-check-circle': execution.status === 'completed',
+                            'fa fa-times-circle': execution.status === 'failed',
+                            'fa fa-stop-circle': execution.status === 'stopped',
+                            'fa fa-clock': execution.status === 'pending'
+                        }"
+                    ></i>
+                    <span x-text="execution.status ? execution.status.toUpperCase() : ''"></span>
+                </span>
+                
+                <!-- Control Buttons -->
+                <template x-if="execution.status === 'running'">
+                    <button @click="stopExecution()" class="btn btn-sm btn-danger">
+                        <i class="fa fa-stop mr-2"></i>Stop
+                    </button>
+                </template>
+                
+                <button @click="refreshData()" class="btn btn-sm btn-secondary">
+                    <i class="fa fa-refresh mr-2"></i>Refresh
+                </button>
+            </div>
+        </div>
+        
+        <!-- Metrics -->
+        <div class="mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+                <div class="text-sm font-medium text-gray-500">Duration</div>
+                <div class="mt-1 text-2xl font-semibold text-gray-900">
+                    <span x-text="formatDuration(execution.duration_seconds)">-</span>
+                </div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+                <div class="text-sm font-medium text-gray-500">Total Steps</div>
+                <div class="mt-1 text-2xl font-semibold text-gray-900">
+                    <span x-text="execution.statistics?.total_steps || 0">0</span>
+                </div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+                <div class="text-sm font-medium text-gray-500">Failed Steps</div>
+                <div class="mt-1 text-2xl font-semibold" :class="execution.statistics?.failed_steps > 0 ? 'text-red-600' : 'text-gray-900'">
+                    <span x-text="execution.statistics?.failed_steps || 0">0</span>
+                </div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+                <div class="text-sm font-medium text-gray-500">Success Rate</div>
+                <div class="mt-1 text-2xl font-semibold text-green-600">
+                    <span x-text="(execution.statistics?.success_rate || 0).toFixed(1) + '%'">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content: Visualization and Logs -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <!-- Workflow Lineage Visualization -->
+        <div class="lg:col-span-2 bg-white shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Workflow Lineage</h3>
+            <div id="lineage-graph" class="border border-gray-200 rounded" style="height: 500px; overflow: auto;">
+                <template x-if="!lineageData.nodes || lineageData.nodes.length === 0">
+                    <div class="flex items-center justify-center h-full text-gray-500">
+                        <div class="text-center">
+                            <i class="fa fa-sitemap text-4xl mb-2"></i>
+                            <p>No workflow steps yet</p>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+        
+        <!-- Live Metrics -->
+        <div class="bg-white shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Live Status</h3>
+            
+            <!-- WebSocket Connection Status -->
+            <div class="mb-4 flex items-center justify-between">
+                <span class="text-sm text-gray-600">Real-time Updates</span>
+                <span 
+                    :class="wsConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                    class="px-2 py-1 rounded text-xs font-medium"
+                >
+                    <i :class="wsConnected ? 'fa fa-plug' : 'fa fa-plug-circle-xmark'"></i>
+                    <span x-text="wsConnected ? 'Connected' : 'Disconnected'"></span>
+                </span>
+            </div>
+            
+            <!-- Current Step -->
+            <template x-if="currentStep">
+                <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div class="text-xs font-medium text-blue-600 uppercase mb-1">Current Step</div>
+                    <div class="text-sm font-semibold text-blue-900" x-text="currentStep.step_name"></div>
+                    <div class="text-xs text-blue-700 mt-1">
+                        <span x-text="currentStep.step_type"></span>
+                        <template x-if="currentStep.code">
+                            • <span x-text="currentStep.code"></span>
+                        </template>
+                    </div>
+                </div>
+            </template>
+            
+            <!-- Recent Activity -->
+            <div>
+                <h4 class="text-sm font-medium text-gray-700 mb-2">Recent Steps</h4>
+                <div class="space-y-2">
+                    <template x-for="log in recentLogs.slice(0, 5)" :key="log.id">
+                        <div class="flex items-start gap-x-2 text-sm">
+                            <i 
+                                :class="{
+                                    'fa fa-check-circle text-green-500': log.success,
+                                    'fa fa-times-circle text-red-500': !log.success
+                                }"
+                            ></i>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-gray-900 truncate" x-text="log.step_name"></div>
+                                <div class="text-xs text-gray-500">
+                                    <span x-text="log.duration_ms ? log.duration_ms + 'ms' : ''"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="recentLogs.length === 0" class="text-sm text-gray-500 text-center py-4">
+                        No steps yet
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Logs Viewer -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Execution Logs</h3>
+            
+            <!-- Log Filters -->
+            <div class="flex items-center gap-x-2">
+                <select x-model="logFilters.step_type" @change="filterLogs()" class="text-sm border-gray-300 rounded-md">
+                    <option value="">All Types</option>
+                    <option value="fetch_data">Fetch Data</option>
+                    <option value="ai_analysis">AI Analysis</option>
+                    <option value="decision">Decision</option>
+                    <option value="order">Order</option>
+                    <option value="initialization">Initialization</option>
+                </select>
+                
+                <select x-model="logFilters.success" @change="filterLogs()" class="text-sm border-gray-300 rounded-md">
+                    <option value="">All Status</option>
+                    <option value="true">Success</option>
+                    <option value="false">Failed</option>
+                </select>
+                
+                <button @click="exportLogs()" class="btn btn-sm btn-secondary">
+                    <i class="fa fa-download mr-2"></i>Export
+                </button>
+            </div>
+        </div>
+        
+        <!-- Logs Table -->
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Step</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Symbol</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <template x-for="log in filteredLogs" :key="log.id">
+                        <tr :class="log.success ? '' : 'bg-red-50'">
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500" x-text="formatTime(log.created_at)"></td>
+                            <td class="px-4 py-3 text-sm text-gray-900" x-text="log.step_name"></td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <span 
+                                    :class="{
+                                        'bg-blue-100 text-blue-800': log.step_type === 'fetch_data',
+                                        'bg-purple-100 text-purple-800': log.step_type === 'ai_analysis',
+                                        'bg-yellow-100 text-yellow-800': log.step_type === 'decision',
+                                        'bg-green-100 text-green-800': log.step_type === 'order',
+                                        'bg-gray-100 text-gray-800': log.step_type === 'initialization'
+                                    }"
+                                    class="px-2 py-1 text-xs font-medium rounded"
+                                    x-text="log.step_type"
+                                ></span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900" x-text="log.code || '-'"></td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                <span x-text="log.duration_ms ? log.duration_ms + 'ms' : '-'"></span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <span 
+                                    :class="log.success ? 'text-green-600' : 'text-red-600'"
+                                    class="font-medium"
+                                >
+                                    <i :class="log.success ? 'fa fa-check-circle' : 'fa fa-times-circle'"></i>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-right text-sm">
+                                <button @click="showLogDetail(log)" class="text-blue-600 hover:text-blue-800">
+                                    <i class="fa fa-eye"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="filteredLogs.length === 0">
+                        <td colspan="7" class="px-4 py-8 text-center text-gray-500">
+                            No logs available
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Log Detail Modal -->
+    <div x-show="selectedLog" class="fixed inset-0 bg-gray-500 bg-opacity-75 z-50 flex items-center justify-center" x-cloak>
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 class="text-lg font-medium text-gray-900">Log Details</h3>
+                <button @click="selectedLog = null" class="text-gray-400 hover:text-gray-500">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+            <div class="px-6 py-4" x-show="selectedLog">
+                <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Step Name</dt>
+                        <dd class="mt-1 text-sm text-gray-900" x-text="selectedLog?.step_name"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Step Type</dt>
+                        <dd class="mt-1 text-sm text-gray-900" x-text="selectedLog?.step_type"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Symbol</dt>
+                        <dd class="mt-1 text-sm text-gray-900" x-text="selectedLog?.code || 'N/A'"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Duration</dt>
+                        <dd class="mt-1 text-sm text-gray-900" x-text="selectedLog?.duration_ms ? selectedLog.duration_ms + 'ms' : 'N/A'"></dd>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <dt class="text-sm font-medium text-gray-500">Status</dt>
+                        <dd class="mt-1">
+                            <span 
+                                :class="selectedLog?.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                                class="px-2 py-1 text-xs font-medium rounded"
+                                x-text="selectedLog?.success ? 'Success' : 'Failed'"
+                            ></span>
+                        </dd>
+                    </div>
+                    <div class="sm:col-span-2" x-show="selectedLog?.error_message">
+                        <dt class="text-sm font-medium text-gray-500">Error Message</dt>
+                        <dd class="mt-1 text-sm text-red-600" x-text="selectedLog?.error_message"></dd>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <dt class="text-sm font-medium text-gray-500 mb-2">Input Data</dt>
+                        <dd class="mt-1">
+                            <pre class="text-xs bg-gray-50 p-3 rounded overflow-x-auto" x-text="JSON.stringify(selectedLog?.input_data, null, 2)"></pre>
+                        </dd>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <dt class="text-sm font-medium text-gray-500 mb-2">Output Data</dt>
+                        <dd class="mt-1">
+                            <pre class="text-xs bg-gray-50 p-3 rounded overflow-x-auto" x-text="JSON.stringify(selectedLog?.output_data, null, 2)"></pre>
+                        </dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.6/dist/vis-network.min.js"></script>
+<script src="/static/js/workflow-execution.js"></script>
+{% endblock %}
+
+{% block styles %}
+<link href="https://cdn.jsdelivr.net/npm/vis-network@9.1.6/dist/vis-network.min.css" rel="stylesheet" type="text/css" />
+<style>
+    [x-cloak] { display: none !important; }
+    .btn { @apply px-4 py-2 rounded-md font-medium transition-colors; }
+    .btn-sm { @apply px-3 py-1 text-sm; }
+    .btn-secondary { @apply bg-gray-200 text-gray-700 hover:bg-gray-300; }
+    .btn-danger { @apply bg-red-600 text-white hover:bg-red-700; }
+</style>
+{% endblock %}
+

@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}IBKR Gateway Login - IBKR Trading{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8" x-data="ibkrAuth()">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">IBKR Gateway Authentication</h1>
+        <p class="text-gray-600 dark:text-gray-400 mt-2">Connect to Interactive Brokers Client Portal Gateway</p>
+    </div>
+
+    <!-- Connection Status Card -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Connection Status</h2>
+            <button 
+                @click="checkStatus()"
+                class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
+            >
+                <i class="fa fa-sync" :class="{'fa-spin': checking}"></i> Refresh
+            </button>
+        </div>
+
+        <div class="space-y-4">
+            <!-- Server Status -->
+            <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded">
+                <span class="text-gray-700 dark:text-gray-300">Gateway Server</span>
+                <span class="flex items-center">
+                    <span 
+                        class="inline-block w-3 h-3 rounded-full mr-2"
+                        :class="status.server_online ? 'bg-green-500' : 'bg-red-500'"
+                    ></span>
+                    <span x-text="status.server_online ? 'Online' : 'Offline'"></span>
+                </span>
+            </div>
+
+            <!-- Authentication Status -->
+            <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded">
+                <span class="text-gray-700 dark:text-gray-300">Authentication</span>
+                <span class="flex items-center">
+                    <span 
+                        class="inline-block w-3 h-3 rounded-full mr-2"
+                        :class="status.authenticated ? 'bg-green-500' : 'bg-gray-400'"
+                    ></span>
+                    <span x-text="status.authenticated ? 'Connected' : 'Not Connected'"></span>
+                </span>
+            </div>
+
+            <!-- Account Info -->
+            <div x-show="status.authenticated" class="p-4 bg-blue-50 dark:bg-blue-900 rounded">
+                <div class="text-sm text-gray-700 dark:text-gray-300">
+                    <strong>Account ID:</strong> <span x-text="status.account_id || 'N/A'"></span>
+                </div>
+                <div x-show="status.accounts && status.accounts.length > 1" class="mt-2">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Select Account:</label>
+                    <select 
+                        x-model="selectedAccount"
+                        @change="saveAccountSelection()"
+                        class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800"
+                    >
+                        <template x-for="account in status.accounts" :key="account">
+                            <option :value="account" x-text="account"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Gateway URL -->
+            <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded">
+                <div class="text-sm text-gray-700 dark:text-gray-300">
+                    <strong>Gateway URL:</strong> <span x-text="status.gateway_url || 'Not configured'"></span>
+                </div>
+            </div>
+
+            <!-- Error Message -->
+            <div x-show="status.server_error || status.error" class="p-4 bg-red-50 dark:bg-red-900 rounded border border-red-200 dark:border-red-700">
+                <div class="flex items-start">
+                    <i class="fa fa-exclamation-triangle text-red-600 dark:text-red-400 mt-0.5 mr-2"></i>
+                    <div class="text-sm text-red-800 dark:text-red-300">
+                        <strong>Error:</strong>
+                        <span x-text="status.server_error || status.error"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Actions</h2>
+        
+        <div class="space-y-3">
+            <button 
+                @click="login()"
+                :disabled="loggingIn || status.authenticated"
+                class="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <i class="fa fa-sign-in-alt mr-2"></i>
+                <span x-text="loggingIn ? 'Connecting...' : (status.authenticated ? 'Already Connected' : 'Connect to Gateway')"></span>
+            </button>
+
+            <button 
+                @click="logout()"
+                :disabled="!status.authenticated"
+                class="w-full px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <i class="fa fa-sign-out-alt mr-2"></i>
+                Disconnect
+            </button>
+        </div>
+    </div>
+
+    <!-- Gateway Direct Login -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Gateway Web Interface</h2>
+        
+        <p class="text-gray-600 dark:text-gray-400 mb-4">
+            For initial authentication, you may need to login directly through the IBKR Gateway web interface.
+        </p>
+        
+        <a 
+            href="https://localhost:5055"
+            target="_blank"
+            class="inline-flex items-center px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+        >
+            <i class="fa fa-external-link-alt mr-2"></i>
+            Open Gateway Login (Port 5055)
+        </a>
+        
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-3">
+            <i class="fa fa-info-circle mr-1"></i>
+            You may need to accept the SSL certificate warning in your browser.
+        </p>
+    </div>
+
+    <!-- Help/Instructions -->
+    <div class="bg-yellow-50 dark:bg-yellow-900 border-l-4 border-yellow-400 p-4 rounded">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <i class="fa fa-info-circle text-yellow-700 dark:text-yellow-300"></i>
+            </div>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-yellow-800 dark:text-yellow-300">Connection Instructions</h3>
+                <div class="mt-2 text-sm text-yellow-700 dark:text-yellow-400">
+                    <ol class="list-decimal list-inside space-y-2">
+                        <li>
+                            <strong>Start the Gateway:</strong> If offline, run:
+                            <br><code class="bg-yellow-100 dark:bg-yellow-800 px-2 py-1 rounded">docker compose up ibkr-gateway</code>
+                        </li>
+                        <li>
+                            <strong>Initial Login:</strong> Click "Open Gateway Login" above and authenticate with your IBKR credentials
+                        </li>
+                        <li>
+                            <strong>Two-Factor Authentication:</strong> Approve the connection on your IBKR mobile app
+                        </li>
+                        <li>
+                            <strong>Verify Connection:</strong> Return to this page and click "Refresh" to verify authentication
+                        </li>
+                        <li>
+                            <strong>Alternative:</strong> Use the "Connect to Gateway" button below to trigger re-authentication via API
+                        </li>
+                    </ol>
+                    
+                    <div class="mt-4 p-3 bg-yellow-100 dark:bg-yellow-800 rounded">
+                        <strong>Troubleshooting:</strong>
+                        <ul class="list-disc list-inside mt-2 space-y-1">
+                            <li>Ensure ports 5055 and 5056 are not blocked by firewall</li>
+                            <li>Check Docker logs: <code class="bg-yellow-200 dark:bg-yellow-900 px-1 rounded">docker logs ibkr-gateway</code></li>
+                            <li>Gateway may take 30-60 seconds to fully start</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('ibkrAuth', () => ({
+        status: {
+            authenticated: false,
+            account_id: null,
+            accounts: [],
+            server_online: false,
+            gateway_url: null
+        },
+        selectedAccount: null,
+        checking: false,
+        loggingIn: false,
+
+        async init() {
+            await this.checkStatus();
+            // Auto-refresh every 30 seconds
+            setInterval(() => this.checkStatus(), 30000);
+        },
+
+        async checkStatus() {
+            this.checking = true;
+            try {
+                const response = await fetch('/api/ibkr/auth/status');
+                if (response.ok) {
+                    this.status = await response.json();
+                    if (this.status.accounts && this.status.accounts.length > 0) {
+                        this.selectedAccount = this.status.account_id || this.status.accounts[0];
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to check status:', error);
+            } finally {
+                this.checking = false;
+            }
+        },
+
+        async login() {
+            if (this.loggingIn) return;
+            
+            this.loggingIn = true;
+            try {
+                const response = await fetch('/api/ibkr/auth/login', {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(result.message || 'Authentication initiated. Please check IBKR mobile app for 2FA.');
+                    
+                    // Check status after a delay
+                    setTimeout(() => this.checkStatus(), 3000);
+                } else {
+                    const error = await response.json();
+                    alert(`Login failed: ${error.detail || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('Login failed: ' + error.message);
+            } finally {
+                this.loggingIn = false;
+            }
+        },
+
+        async logout() {
+            try {
+                const response = await fetch('/api/ibkr/auth/logout', {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(result.message);
+                    await this.checkStatus();
+                } else {
+                    const error = await response.json();
+                    alert(`Logout failed: ${error.detail || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                alert('Logout failed: ' + error.message);
+            }
+        },
+
+        async saveAccountSelection() {
+            // Save selected account to backend
+            console.log('Selected account:', this.selectedAccount);
+            // TODO: Implement account selection save to backend settings
+        }
+    }));
+});
+</script>
+{% endblock %}
+

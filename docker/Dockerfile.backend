@@ -2,13 +2,19 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including Chromium for Kaleido/Plotly
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     postgresql-client \
     curl \
+    chromium \
+    chromium-driver \
     && rm -rf /var/lib/apt/lists/*
+
+# Set Chromium path for Kaleido
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
 # Copy requirements
 COPY backend/requirements.txt /app/backend/requirements.txt

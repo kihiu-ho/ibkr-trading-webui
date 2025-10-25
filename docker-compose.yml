@@ -1,13 +1,204 @@
-version: '3.8'
+# IMPORTANT: This application requires a .env file with DATABASE_URL configured
+# See DATABASE_SETUP.md for detailed setup instructions
+#
+# Minimal .env example:
+# DATABASE_URL=postgresql+psycopg2://user:password@host:port/dbname?sslmode=require
+# OPENAI_API_KEY=your_key_here
+# IBKR_ACCOUNT_ID=DU1234567
+
 services:
-  web:
-    build: .
-    image: ibkr-rest-api
-    container_name: ibkr
+  # IBKR Gateway - Interactive Brokers Client Portal Gateway
+  ibkr-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ibkr-gateway
+    container_name: ibkr-gateway
     environment:
-      IBKR_ACCOUNT_ID: "U1234567"
+      IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
     ports:
-      - "5055:5055"
-      - "5056:5056"
+      - "5055:5055"  # IBKR Gateway API
+      - "5056:5056"  # IBKR Gateway Web Interface
     volumes:
-      - ./webapp:/app/webapp
+      - ./conf.yaml:/app/gateway/root/conf.yaml:ro
+    networks:
+      - trading-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://localhost:5055/v1/api/tickle"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Redis - Message Broker and Cache
+  redis:
+    image: redis:7-alpine
+    container_name: ibkr-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - trading-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # MinIO - S3-compatible Object Storage (for charts)
+  minio:
+    image: minio/minio:latest
+    container_name: ibkr-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-minioadmin}"
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    volumes:
+      - minio_data:/data
+    networks:
+      - trading-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    image: ibkr-backend
+    container_name: ibkr-backend
+    environment:
+      DATABASE_URL: "${DATABASE_URL}"
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+      IBKR_API_BASE_URL: "https://ibkr-gateway:5055/v1/api"
+      IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
+      IBKR_SSL_VERIFY: "false"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_PUBLIC_ENDPOINT: "localhost:9000"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-your_key_here}"
+      OPENAI_API_BASE: "${OPENAI_API_BASE:-https://api.openai.com/v1}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4-turbo-preview}"
+      LLM_VISION_MODEL: "${LLM_VISION_MODEL:-gpt-4-vision-preview}"
+      LLM_VISION_PROVIDER: "${LLM_VISION_PROVIDER:-openai}"
+      DEBUG: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      ibkr-gateway:
+        condition: service_started
+    networks:
+      - trading-network
+    restart: unless-stopped
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Celery Worker - Background Task Processing
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    image: ibkr-backend
+    container_name: ibkr-celery-worker
+    environment:
+      DATABASE_URL: "${DATABASE_URL}"
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+      IBKR_API_BASE_URL: "https://ibkr-gateway:5055/v1/api"
+      IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
+      IBKR_SSL_VERIFY: "false"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_PUBLIC_ENDPOINT: "localhost:9000"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-your_key_here}"
+      OPENAI_API_BASE: "${OPENAI_API_BASE:-https://api.openai.com/v1}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4-turbo-preview}"
+      LLM_VISION_MODEL: "${LLM_VISION_MODEL:-gpt-4-vision-preview}"
+      LLM_VISION_PROVIDER: "${LLM_VISION_PROVIDER:-openai}"
+    volumes:
+      - ./backend:/app/backend
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      ibkr-gateway:
+        condition: service_started
+    networks:
+      - trading-network
+    restart: unless-stopped
+    command: celery -A backend.celery_app worker --loglevel=info --concurrency=2
+
+  # Celery Beat - Task Scheduler
+  celery-beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    image: ibkr-backend
+    container_name: ibkr-celery-beat
+    environment:
+      DATABASE_URL: "${DATABASE_URL}"
+      REDIS_URL: "redis://redis:6379/0"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+    volumes:
+      - ./backend:/app/backend
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - trading-network
+    restart: unless-stopped
+    command: celery -A backend.celery_app beat --loglevel=info
+
+  # Flower - Celery Monitoring (Optional)
+  flower:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    image: ibkr-backend
+    container_name: ibkr-flower
+    environment:
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - trading-network
+    restart: unless-stopped
+    command: celery -A backend.celery_app flower --port=5555
+
+volumes:
+  redis_data:
+    name: ibkr_redis_data
+  minio_data:
+    name: ibkr_minio_data
+
+networks:
+  trading-network:
+    driver: bridge

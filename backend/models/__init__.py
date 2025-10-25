@@ -1,25 +1,34 @@
 """Database models."""
-from backend.models.workflow import Workflow, WorkflowVersion, WorkflowExecution
+from backend.core.database import Base
 from backend.models.strategy import Strategy, Code, StrategyCode
 from backend.models.market import MarketData
-from backend.models.decision import Decision
 from backend.models.order import Order
 from backend.models.trade import Trade
 from backend.models.position import Position
 from backend.models.agent import AgentConversation
+from backend.models.indicator import Indicator, StrategyIndicator, IndicatorChart
+from backend.models.trading_signal import TradingSignal
+from backend.models.prompt import PromptTemplate, PromptPerformance
+from backend.models.lineage import LineageRecord
+from backend.models.symbol import Symbol
 
 __all__ = [
-    "Workflow",
-    "WorkflowVersion",
-    "WorkflowExecution",
+    "Base",
     "Strategy",
     "Code",
     "StrategyCode",
     "MarketData",
-    "Decision",
     "Order",
     "Trade",
     "Position",
     "AgentConversation",
+    "Indicator",
+    "StrategyIndicator",
+    "IndicatorChart",
+    "TradingSignal",
+    "PromptTemplate",
+    "PromptPerformance",
+    "LineageRecord",
+    "Symbol",
 ]
 

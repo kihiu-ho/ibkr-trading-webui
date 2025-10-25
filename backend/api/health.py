@@ -1,6 +1,7 @@
 """Health check endpoints."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from backend.core.database import get_db
 from backend.services.ibkr_service import IBKRService
 
@@ -18,7 +19,7 @@ async def health_check(db: Session = Depends(get_db)):
     
     # Check database
     try:
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         health_status["database"] = "connected"
     except Exception as e:
         health_status["database"] = f"error: {str(e)}"

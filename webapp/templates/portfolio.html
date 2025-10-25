@@ -24,13 +24,13 @@
             {{ item['contractDesc'] }}<br />
             {{ item['conid'] }}
         </td>
-        <td>{{ item['position'] }}</td>
-        <td>${{ item['avgCost'] }}</td>
-        <td>${{ item['mktPrice']|round(2) }}</td>
-        <td>${{ item['mktValue'] }}</td>
+        <td>{{ item['position']|default('N/A') }}</td>
+        <td>${{ item['avgCost']|default(0)|round(2) }}</td>
+        <td>${{ item['mktPrice']|default(0)|round(2) }}</td>
+        <td>${{ item['mktValue']|default(0)|round(2) }}</td>
         <td class="pt-4">
-            <span class="alert {% if item['unrealizedPnl'] >= 0 %}alert-success{% else %}alert-danger{% endif %}">
-                {{ item['unrealizedPnl'] }}
+            <span class="alert {% if item['unrealizedPnl']|default(0) >= 0 %}alert-success{% else %}alert-danger{% endif %}">
+                {{ item['unrealizedPnl']|default(0)|round(2) }}
             </span>
         </td>
     </tr>
