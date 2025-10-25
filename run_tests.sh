@@ -18,30 +18,36 @@ NC='\033[0m' # No Color
 # Check if pytest is installed
 if ! command -v pytest &> /dev/null; then
     echo -e "${RED}pytest not found. Installing...${NC}"
-    pip install pytest pytest-asyncio pytest-mock pytest-cov
+    pip install pytest pytest-asyncio pytest-mock pytest-cov pandas numpy talib
 fi
 
-# Run symbol service tests
-echo -e "${BLUE}[1/4] Testing Symbol Service...${NC}"
+# Run all test suites individually
+echo -e "${BLUE}[1/7] Testing Symbol Service...${NC}"
 pytest backend/tests/test_symbol_service.py -v --tb=short || echo -e "${YELLOW}⚠ Symbol Service tests not all passing${NC}"
 
 echo ""
-
-# Run strategy service tests
-echo -e "${BLUE}[2/4] Testing Strategy Service...${NC}"
+echo -e "${BLUE}[2/7] Testing Strategy Service...${NC}"
 pytest backend/tests/test_strategy_service.py -v --tb=short || echo -e "${YELLOW}⚠ Strategy Service tests not all passing${NC}"
 
 echo ""
-
-# Run order manager tests
-echo -e "${BLUE}[3/4] Testing Order Manager...${NC}"
+echo -e "${BLUE}[3/7] Testing Order Manager...${NC}"
 pytest backend/tests/test_order_manager.py -v --tb=short || echo -e "${YELLOW}⚠ Order Manager tests not all passing${NC}"
 
 echo ""
-
-# Run lineage tracker tests
-echo -e "${BLUE}[4/4] Testing Lineage Tracker...${NC}"
+echo -e "${BLUE}[4/7] Testing Lineage Tracker...${NC}"
 pytest backend/tests/test_lineage_tracker.py -v --tb=short || echo -e "${YELLOW}⚠ Lineage Tracker tests not all passing${NC}"
+
+echo ""
+echo -e "${BLUE}[5/7] Testing Indicator Calculator...${NC}"
+pytest backend/tests/test_indicator_calculator.py -v --tb=short || echo -e "${YELLOW}⚠ Indicator Calculator tests not all passing${NC}"
+
+echo ""
+echo -e "${BLUE}[6/7] Testing Signal Generator...${NC}"
+pytest backend/tests/test_signal_generator_service.py -v --tb=short || echo -e "${YELLOW}⚠ Signal Generator tests not all passing${NC}"
+
+echo ""
+echo -e "${BLUE}[7/7] Testing Position Manager...${NC}"
+pytest backend/tests/test_position_manager_service.py -v --tb=short || echo -e "${YELLOW}⚠ Position Manager tests not all passing${NC}"
 
 echo ""
 echo "========================================"
@@ -52,10 +58,7 @@ echo ""
 # Run all tests with coverage
 pytest backend/tests/ \
        --tb=short \
-       --cov=backend/services/symbol_service \
-       --cov=backend/services/strategy_service \
-       --cov=backend/services/order_manager \
-       --cov=backend/services/lineage_tracker \
+       --cov=backend/services \
        --cov=backend/models \
        --cov-report=term-missing \
        --cov-report=html:htmlcov \
@@ -82,11 +85,16 @@ echo -e "${GREEN}✓ Coverage Report Generated${NC}"
 echo "   View report at: htmlcov/index.html"
 echo ""
 
-echo "Test Files Created:"
-echo "  - test_symbol_service.py (Symbol caching & search)"
-echo "  - test_strategy_service.py (Strategy scheduling)"
-echo "  - test_order_manager.py (Order lifecycle)"
-echo "  - test_lineage_tracker.py (Execution tracking)"
+echo "Test Suites (7 Total):"
+echo "  1. test_symbol_service.py (11 tests - Symbol caching & search)"
+echo "  2. test_strategy_service.py (12 tests - Strategy scheduling)"
+echo "  3. test_order_manager.py (18 tests - Order lifecycle)"
+echo "  4. test_lineage_tracker.py (6 tests - Execution tracking)"
+echo "  5. test_indicator_calculator.py (20 tests - TA-Lib indicators)"
+echo "  6. test_signal_generator_service.py (17 tests - Signal generation)"
+echo "  7. test_position_manager_service.py (18 tests - Position & P&L)"
+echo ""
+echo "Total Test Cases: 102 comprehensive tests"
 echo ""
 
 echo "========================================"

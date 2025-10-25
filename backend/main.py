@@ -2,7 +2,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from backend.api import health, strategies, orders, market_data, frontend, logs, dashboard, symbols, ibkr_auth, indicators, charts, analysis, signals, prompts, lineage
+from backend.api import health, strategies, orders, market_data, frontend, logs, dashboard, symbols, ibkr_auth, indicators, charts, analysis, signals, prompts, lineage, positions
 from backend.core.database import engine, get_db
 from backend.models import Base
 from backend.models.workflow_log import WorkflowLog
@@ -50,6 +50,7 @@ app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
 app.include_router(signals.router, prefix="/api/signals", tags=["signals"])
 app.include_router(prompts.router, tags=["prompts"])
 app.include_router(lineage.router, tags=["lineage"])
+app.include_router(positions.router, tags=["positions"])
 
 # Frontend routes
 app.include_router(frontend.router, tags=["frontend"])

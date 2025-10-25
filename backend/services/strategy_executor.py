@@ -24,6 +24,8 @@ from backend.services.symbol_service import SymbolService
 from backend.services.ibkr_service import IBKRService
 from backend.services.chart_service import ChartService
 from backend.services.llm_service import LLMService
+from backend.services.indicator_calculator import IndicatorCalculator
+from backend.services.signal_generator import SignalGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,9 @@ class StrategyExecutor:
         self.symbol_service = SymbolService(db)
         self.ibkr = IBKRService()
         self.chart_service = ChartService(db)
-        self.llm_service = LLMService()
+        self.llm_service = LLMService(db=db)
+        self.indicator_calc = IndicatorCalculator()
+        self.signal_generator = SignalGenerator(db)
     
     async def execute_strategy(
         self,
@@ -293,14 +297,19 @@ class StrategyExecutor:
             }
             
             # Calculate indicators for each timeframe
-            # TODO: Implement actual indicator calculation
-            # For now, return a placeholder
-            indicator_results = {
-                "timeframes": list(market_data.keys()),
-                "indicators": [ind.name for ind in strategy.indicators],
-                "calculated": True,
-                "note": "Indicator calculation placeholder"
-            }
+            indicator_configs = [
+                {
+                    "name": ind.name,
+                    "type": ind.type,
+                    "parameters": ind.param or {}
+                }
+                for ind in strategy.indicators
+            ]
+            
+            indicator_results = await self.indicator_calc.calculate_indicators(
+                market_data=market_data,
+                indicator_configs=indicator_configs
+            )
             
             output_data = indicator_results
             
@@ -479,32 +488,43 @@ class StrategyExecutor:
                 "llm_recommendation": llm_analysis.get('recommendation') if llm_analysis else None
             }
             
-            # Generate signal based on LLM analysis and indicators
-            # TODO: Implement actual signal generation logic
-            signal_action = llm_analysis.get('recommendation', 'HOLD') if llm_analysis else 'HOLD'
-            
-            signal_data = {
-                "action": signal_action,
-                "confidence": llm_analysis.get('confidence', 0.5) if llm_analysis else 0.5,
-                "reasoning": llm_analysis.get('reasoning') if llm_analysis else "Indicator-based signal",
-                "execution_id": execution_id,
-                "generated_at": datetime.now().isoformat()
-            }
+            # Generate comprehensive signal using the Signal Generator
+            signal = await self.signal_generator.generate_signal(
+                strategy_id=strategy.id,
+                symbol=symbol_data['symbol'],
+                conid=symbol_data['conid'],
+                market_data=market_data,
+                indicator_data=indicator_data,
+                chart_urls=chart_data.get('chart_urls', {}),
+                llm_enabled=strategy.llm_enabled,
+                llm_language=strategy.llm_language or 'en'
+            )
             
             # Save signal to database
-            signal = TradingSignal(
-                strategy_id=strategy.id,
-                signal_type=signal_action.lower(),
-                confidence=signal_data['confidence'],
-                reasoning=signal_data['reasoning'],
-                metadata={"execution_id": execution_id},
-                created_at=datetime.now()
-            )
             self.db.add(signal)
             self.db.commit()
             self.db.refresh(signal)
             
-            signal_data['signal_id'] = signal.id
+            # Build signal data for lineage
+            signal_data = {
+                "action": signal.signal_type,
+                "confidence": signal.confidence,
+                "trend": signal.trend,
+                "entry_range": [signal.entry_price_low, signal.entry_price_high],
+                "stop_loss": signal.stop_loss,
+                "targets": {
+                    "conservative": signal.target_conservative,
+                    "aggressive": signal.target_aggressive
+                },
+                "r_multiples": {
+                    "conservative": signal.r_multiple_conservative,
+                    "aggressive": signal.r_multiple_aggressive
+                },
+                "confirmation": signal.confirmation_signals,
+                "execution_id": execution_id,
+                "signal_id": signal.id,
+                "generated_at": signal.generated_at.isoformat() if signal.generated_at else None
+            }
             output_data = signal_data
             
             # Record lineage

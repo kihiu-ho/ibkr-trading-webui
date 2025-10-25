@@ -115,3 +115,15 @@ async def prompts(request: Request):
     """Prompt template manager page with Monaco Editor."""
     return templates.TemplateResponse("prompts.html", {"request": request})
 
+
+@router.get("/orders", response_class=HTMLResponse)
+async def orders(request: Request):
+    """Orders management page."""
+    return templates.TemplateResponse("orders.html", {"request": request})
+
+
+@router.get("/portfolio", response_class=HTMLResponse)
+async def portfolio(request: Request):
+    """Portfolio and positions page."""
+    return templates.TemplateResponse("portfolio.html", {"request": request})
+
