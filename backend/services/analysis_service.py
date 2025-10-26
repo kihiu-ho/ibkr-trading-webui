@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple, Optional, Union
 from datetime import datetime
 import pandas as pd
 import numpy as np
-import talib
+import ta
 
 from backend.schemas.analysis import (
     ComprehensiveAnalysis,
@@ -198,24 +198,30 @@ class AnalysisService:
         indicators = {}
         
         # Moving Averages
-        indicators['sma_20'] = talib.SMA(close, timeperiod=20)
-        indicators['sma_50'] = talib.SMA(close, timeperiod=50)
-        indicators['sma_200'] = talib.SMA(close, timeperiod=200)
-        
+        indicators['sma_20'] = ta.trend.sma_indicator(pd.Series(close), window=20).values
+        indicators['sma_50'] = ta.trend.sma_indicator(pd.Series(close), window=50).values
+        indicators['sma_200'] = ta.trend.sma_indicator(pd.Series(close), window=200).values
+
         # MACD
-        macd, signal, histogram = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
+        close_series = pd.Series(close)
+        macd = ta.trend.macd(close_series, window_fast=12, window_slow=26).values
+        signal = ta.trend.macd_signal(close_series, window_fast=12, window_slow=26, window_sign=9).values
+        histogram = ta.trend.macd_diff(close_series, window_fast=12, window_slow=26, window_sign=9).values
         indicators['macd'] = macd
         indicators['macd_signal'] = signal
         indicators['macd_histogram'] = histogram
-        
+
         # RSI
-        indicators['rsi'] = talib.RSI(close, timeperiod=14)
-        
+        indicators['rsi'] = ta.momentum.rsi(pd.Series(close), window=14).values
+
         # ATR
-        indicators['atr'] = talib.ATR(high, low, close, timeperiod=14)
-        
+        indicators['atr'] = ta.volatility.average_true_range(pd.Series(high), pd.Series(low), pd.Series(close), window=14).values
+
         # Bollinger Bands
-        upper, middle, lower = talib.BBANDS(close, timeperiod=20, nbdevup=2, nbdevdn=2, matype=0)
+        close_series = pd.Series(close)
+        upper = ta.volatility.bollinger_hband(close_series, window=20, window_dev=2).values
+        middle = ta.volatility.bollinger_mavg(close_series, window=20).values
+        lower = ta.volatility.bollinger_lband(close_series, window=20, window_dev=2).values
         indicators['bb_upper'] = upper
         indicators['bb_middle'] = middle
         indicators['bb_lower'] = lower
@@ -223,7 +229,7 @@ class AnalysisService:
         # SuperTrend
         period = 10
         multiplier = 3
-        atr = talib.ATR(high, low, close, timeperiod=period)
+        atr = ta.volatility.average_true_range(pd.Series(high), pd.Series(low), pd.Series(close), window=period).values
         hl_avg = (high + low) / 2
         upper_band = hl_avg + (multiplier * atr)
         lower_band = hl_avg - (multiplier * atr)
@@ -231,12 +237,12 @@ class AnalysisService:
         direction = np.where(close > supertrend, 1, -1)
         indicators['supertrend'] = supertrend
         indicators['supertrend_direction'] = direction
-        
+
         # OBV
         indicators['obv'] = self._calculate_obv(df)
-        
+
         # Volume SMA
-        indicators['volume_sma_20'] = talib.SMA(volume, timeperiod=20)
+        indicators['volume_sma_20'] = ta.trend.sma_indicator(pd.Series(volume), window=20).values
         
         return indicators
     

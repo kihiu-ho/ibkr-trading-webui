@@ -9,7 +9,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
-import talib
+import ta
 
 from backend.models.indicator import Indicator
 from backend.config.settings import settings
@@ -118,35 +118,37 @@ class ChartService:
                 if ind_type in ['MA', 'SMA']:
                     # Simple Moving Average
                     period = params.get('period', 20)
-                    calc = talib.SMA(close, timeperiod=period)
+                    calc = ta.trend.sma_indicator(close, window=period)
                     results[f'{indicator.name}'] = calc.tolist()
-                
+
                 elif ind_type == 'EMA':
                     # Exponential Moving Average
                     period = params.get('period', 20)
-                    calc = talib.EMA(close, timeperiod=period)
+                    calc = ta.trend.ema_indicator(close, window=period)
                     results[f'{indicator.name}'] = calc.tolist()
-                
+
                 elif ind_type == 'WMA':
                     # Weighted Moving Average
                     period = params.get('period', 20)
-                    calc = talib.WMA(close, timeperiod=period)
+                    calc = ta.trend.wma_indicator(close, window=period)
                     results[f'{indicator.name}'] = calc.tolist()
                 
                 elif ind_type == 'BB':
                     # Bollinger Bands
                     period = params.get('period', 20)
                     std_dev = params.get('std_dev', 2)
-                    upper, middle, lower = talib.BBANDS(close, timeperiod=period, nbdevup=std_dev, nbdevdn=std_dev, matype=0)
+                    upper = ta.volatility.bollinger_hband(close, window=period, window_dev=std_dev)
+                    lower = ta.volatility.bollinger_lband(close, window=period, window_dev=std_dev)
+                    middle = ta.volatility.bollinger_mavg(close, window=period)
                     results[f'{indicator.name}_upper'] = upper.tolist()
                     results[f'{indicator.name}_lower'] = lower.tolist()
                     results[f'{indicator.name}_middle'] = middle.tolist()
                 
                 elif ind_type == 'SUPERTREND':
-                    # SuperTrend (manual calculation as TA-Lib doesn't have it)
+                    # SuperTrend (manual calculation as ta library doesn't have it)
                     period = params.get('period', 10)
                     multiplier = params.get('multiplier', 3)
-                    atr = talib.ATR(high, low, close, timeperiod=period)
+                    atr = ta.volatility.average_true_range(high, low, close, window=period)
                     hl_avg = (high + low) / 2
                     upper_band = hl_avg + (multiplier * atr)
                     lower_band = hl_avg - (multiplier * atr)
@@ -163,7 +165,9 @@ class ChartService:
                     fast = params.get('fast_period', 12)
                     slow = params.get('slow_period', 26)
                     signal = params.get('signal_period', 9)
-                    macd, signal_line, histogram = talib.MACD(close, fastperiod=fast, slowperiod=slow, signalperiod=signal)
+                    macd = ta.trend.macd(close, window_fast=fast, window_slow=slow)
+                    signal_line = ta.trend.macd_signal(close, window_fast=fast, window_slow=slow, window_sign=signal)
+                    histogram = ta.trend.macd_diff(close, window_fast=fast, window_slow=slow, window_sign=signal)
                     results[f'{indicator.name}_line'] = macd.tolist()
                     results[f'{indicator.name}_signal'] = signal_line.tolist()
                     results[f'{indicator.name}_histogram'] = histogram.tolist()
@@ -171,13 +175,13 @@ class ChartService:
                 elif ind_type == 'RSI':
                     # RSI
                     period = params.get('period', 14)
-                    calc = talib.RSI(close, timeperiod=period)
+                    calc = ta.momentum.rsi(close, window=period)
                     results[f'{indicator.name}'] = calc.tolist()
-                
+
                 elif ind_type == 'ATR':
                     # ATR
                     period = params.get('period', 14)
-                    calc = talib.ATR(high, low, close, timeperiod=period)
+                    calc = ta.volatility.average_true_range(high, low, close, window=period)
                     results[f'{indicator.name}'] = calc.tolist()
                 
                 logger.info(f"Calculated indicator: {indicator.name} ({ind_type})")

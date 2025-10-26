@@ -1,3 +1,6 @@
+# Optimized Docker Compose for IBKR Trading WebUI
+# Fast startup with parallel service initialization and resource optimization
+#
 # IMPORTANT: This application requires a .env file with DATABASE_URL configured
 # See DATABASE_SETUP.md for detailed setup instructions
 #
@@ -6,32 +9,34 @@
 # OPENAI_API_KEY=your_key_here
 # IBKR_ACCOUNT_ID=DU1234567
 
-services:
-  # IBKR Gateway - Interactive Brokers Client Portal Gateway
-  ibkr-gateway:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ibkr-gateway:latest
-    container_name: ibkr-gateway
-    environment:
-      IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
-    ports:
-      - "5055:5055"  # IBKR Gateway API
-      - "5056:5056"  # IBKR Gateway Web Interface
-    volumes:
-      - ./conf.yaml:/app/gateway/root/conf.yaml:ro
-    networks:
-      - trading-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-k", "-f", "https://localhost:5055/v1/api/tickle"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
 
-  # Redis - Message Broker and Cache
+
+x-common-variables: &common-env
+  DATABASE_URL: "${DATABASE_URL}"
+  REDIS_URL: "redis://redis:6379/0"
+  CELERY_BROKER_URL: "redis://redis:6379/0"
+  CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+  IBKR_API_BASE_URL: "https://ibkr-gateway:5055/v1/api"
+  IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
+  IBKR_SSL_VERIFY: "false"
+  MINIO_ENDPOINT: "minio:9000"
+  MINIO_PUBLIC_ENDPOINT: "localhost:9000"
+  MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
+  MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
+  OPENAI_API_KEY: "${OPENAI_API_KEY:-your_key_here}"
+  OPENAI_API_BASE: "${OPENAI_API_BASE:-https://api.openai.com/v1}"
+  OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4-turbo-preview}"
+  LLM_VISION_MODEL: "${LLM_VISION_MODEL:-gpt-4-vision-preview}"
+  LLM_VISION_PROVIDER: "${LLM_VISION_PROVIDER:-openai}"
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Redis - Message Broker and Cache (starts first, fastest startup)
   redis:
     image: redis:7-alpine
     container_name: ibkr-redis
@@ -42,13 +47,25 @@ services:
     networks:
       - trading-network
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 3s
-      retries: 5
+      timeout: 2s
+      retries: 3
+      start_period: 5s
+    sysctls:
+      - net.core.somaxconn=1024
 
-  # MinIO - S3-compatible Object Storage (for charts)
+  # MinIO - S3-compatible Object Storage (starts in parallel with Redis)
   minio:
     image: minio/minio:latest
     container_name: ibkr-minio
@@ -64,42 +81,73 @@ services:
     networks:
       - trading-network
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
+      interval: 15s
+      timeout: 5s
       retries: 3
+      start_period: 10s
 
-  # FastAPI Backend
+  # IBKR Gateway - Interactive Brokers Client Portal Gateway (starts in parallel)
+  ibkr-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - ibkr-gateway:latest
+    image: ibkr-gateway:latest
+    container_name: ibkr-gateway
+    environment:
+      IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
+    ports:
+      - "5055:5055"  # IBKR Gateway API
+      - "5056:5056"  # IBKR Gateway Web Interface
+    volumes:
+      - ./conf.yaml:/app/gateway/root/conf.yaml:ro
+    networks:
+      - trading-network
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://localhost:5055/v1/api/tickle"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # FastAPI Backend (waits for Redis and MinIO to be healthy)
+  # Updated to use 'ta' library instead of 'talib' for technical analysis
   backend:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
+      cache_from:
+        - ibkr-backend:latest
     image: ibkr-backend:latest
     container_name: ibkr-backend
-    environment:
-      DATABASE_URL: "${DATABASE_URL}"
-      REDIS_URL: "redis://redis:6379/0"
-      CELERY_BROKER_URL: "redis://redis:6379/0"
-      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
-      IBKR_API_BASE_URL: "https://ibkr-gateway:5055/v1/api"
-      IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
-      IBKR_SSL_VERIFY: "false"
-      MINIO_ENDPOINT: "minio:9000"
-      MINIO_PUBLIC_ENDPOINT: "localhost:9000"
-      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
-      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-your_key_here}"
-      OPENAI_API_BASE: "${OPENAI_API_BASE:-https://api.openai.com/v1}"
-      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4-turbo-preview}"
-      LLM_VISION_MODEL: "${LLM_VISION_MODEL:-gpt-4-vision-preview}"
-      LLM_VISION_PROVIDER: "${LLM_VISION_PROVIDER:-openai}"
-      DEBUG: "true"
+    environment: *common-env
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app/backend
-      - ./frontend:/app/frontend
+      - ./backend:/app/backend:ro
+      - ./frontend:/app/frontend:ro
       - ./logs:/app/logs
     depends_on:
       redis:
@@ -111,59 +159,57 @@ services:
     networks:
       - trading-network
     restart: unless-stopped
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 
-  # Celery Worker - Background Task Processing
+  # Celery Worker - Background Task Processing (optimized for parallel startup)
   celery-worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.backend
     image: ibkr-backend:latest
     container_name: ibkr-celery-worker
-    environment:
-      DATABASE_URL: "${DATABASE_URL}"
-      REDIS_URL: "redis://redis:6379/0"
-      CELERY_BROKER_URL: "redis://redis:6379/0"
-      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
-      IBKR_API_BASE_URL: "https://ibkr-gateway:5055/v1/api"
-      IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
-      IBKR_SSL_VERIFY: "false"
-      MINIO_ENDPOINT: "minio:9000"
-      MINIO_PUBLIC_ENDPOINT: "localhost:9000"
-      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
-      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-your_key_here}"
-      OPENAI_API_BASE: "${OPENAI_API_BASE:-https://api.openai.com/v1}"
-      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4-turbo-preview}"
-      LLM_VISION_MODEL: "${LLM_VISION_MODEL:-gpt-4-vision-preview}"
-      LLM_VISION_PROVIDER: "${LLM_VISION_PROVIDER:-openai}"
+    environment: *common-env
     volumes:
-      - ./backend:/app/backend
+      - ./backend:/app/backend:ro
       - ./logs:/app/logs
     depends_on:
       redis:
         condition: service_healthy
-      ibkr-gateway:
+      backend:
         condition: service_started
     networks:
       - trading-network
     restart: unless-stopped
-    command: celery -A backend.celery_app worker --loglevel=info --concurrency=2
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=2", "--prefetch-multiplier=1"]
 
-  # Celery Beat - Task Scheduler
+  # Celery Beat - Task Scheduler (lightweight, starts quickly)
   celery-beat:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.backend
     image: ibkr-backend:latest
     container_name: ibkr-celery-beat
-    environment:
-      DATABASE_URL: "${DATABASE_URL}"
-      REDIS_URL: "redis://redis:6379/0"
-      CELERY_BROKER_URL: "redis://redis:6379/0"
-      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+    environment: *common-env
     volumes:
-      - ./backend:/app/backend
+      - ./backend:/app/backend:ro
       - ./logs:/app/logs
     depends_on:
       redis:
@@ -171,13 +217,19 @@ services:
     networks:
       - trading-network
     restart: unless-stopped
-    command: celery -A backend.celery_app beat --loglevel=info
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+    command: ["celery", "-A", "backend.celery_app", "beat", "--loglevel=info"]
 
-  # Flower - Celery Monitoring (Optional)
+  # Flower - Celery Monitoring (optional, minimal resources)
   flower:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.backend
     image: ibkr-backend:latest
     container_name: ibkr-flower
     environment:
@@ -191,14 +243,39 @@ services:
     networks:
       - trading-network
     restart: unless-stopped
-    command: celery -A backend.celery_app flower --port=5555
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555"]
+      interval: 30s
+      timeout: 5s
+      retries: 2
+      start_period: 15s
+    command: ["celery", "-A", "backend.celery_app", "flower", "--port=5555"]
 
+# Optimized volumes with better performance settings
 volumes:
   redis_data:
     name: ibkr_redis_data
+    driver: local
   minio_data:
     name: ibkr_minio_data
+    driver: local
 
+# Optimized network with custom settings for better performance
 networks:
   trading-network:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ibkr-bridge
+      com.docker.network.driver.mtu: 1500
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16

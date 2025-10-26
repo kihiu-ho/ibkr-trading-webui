@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any, List, Optional
 import pandas as pd
 import numpy as np
-import talib
+import ta
 
 logger = logging.getLogger(__name__)
 
@@ -104,10 +104,10 @@ class IndicatorCalculator:
         Returns:
             Dictionary with indicator values and metadata
         """
-        close = df['close'].astype(float).values
-        high = df['high'].astype(float).values
-        low = df['low'].astype(float).values
-        volume = df['volume'].astype(float).values
+        close = df['close'].astype(float)
+        high = df['high'].astype(float)
+        low = df['low'].astype(float)
+        volume = df['volume'].astype(float)
         
         result = {
             'type': indicator_type,
@@ -117,43 +117,43 @@ class IndicatorCalculator:
         # Moving Averages
         if indicator_type in ['SMA', 'MA']:
             period = params.get('period', 20)
-            values = talib.SMA(close, timeperiod=period)
+            values = ta.trend.sma_indicator(close, window=period)
             result['values'] = values.tolist()
-            result['current'] = float(values[-1]) if not np.isnan(values[-1]) else None
-            
+            result['current'] = float(values.iloc[-1]) if not pd.isna(values.iloc[-1]) else None
+
         elif indicator_type == 'EMA':
             period = params.get('period', 20)
-            values = talib.EMA(close, timeperiod=period)
+            values = ta.trend.ema_indicator(close, window=period)
             result['values'] = values.tolist()
-            result['current'] = float(values[-1]) if not np.isnan(values[-1]) else None
-            
+            result['current'] = float(values.iloc[-1]) if not pd.isna(values.iloc[-1]) else None
+
         elif indicator_type == 'WMA':
             period = params.get('period', 20)
-            values = talib.WMA(close, timeperiod=period)
+            values = ta.trend.wma_indicator(close, window=period)
             result['values'] = values.tolist()
-            result['current'] = float(values[-1]) if not np.isnan(values[-1]) else None
+            result['current'] = float(values.iloc[-1]) if not pd.isna(values.iloc[-1]) else None
         
         # Bollinger Bands
         elif indicator_type == 'BB':
             period = params.get('period', 20)
             std_dev = params.get('std_dev', 2)
-            upper, middle, lower = talib.BBANDS(
-                close, timeperiod=period, nbdevup=std_dev, nbdevdn=std_dev
-            )
+            upper = ta.volatility.bollinger_hband(close, window=period, window_dev=std_dev)
+            middle = ta.volatility.bollinger_mavg(close, window=period)
+            lower = ta.volatility.bollinger_lband(close, window=period, window_dev=std_dev)
             result['upper'] = upper.tolist()
             result['middle'] = middle.tolist()
             result['lower'] = lower.tolist()
-            result['current_upper'] = float(upper[-1]) if not np.isnan(upper[-1]) else None
-            result['current_middle'] = float(middle[-1]) if not np.isnan(middle[-1]) else None
-            result['current_lower'] = float(lower[-1]) if not np.isnan(lower[-1]) else None
+            result['current_upper'] = float(upper.iloc[-1]) if not pd.isna(upper.iloc[-1]) else None
+            result['current_middle'] = float(middle.iloc[-1]) if not pd.isna(middle.iloc[-1]) else None
+            result['current_lower'] = float(lower.iloc[-1]) if not pd.isna(lower.iloc[-1]) else None
         
         # SuperTrend
         elif indicator_type == 'SUPERTREND':
             period = params.get('period', 10)
             multiplier = params.get('multiplier', 3)
-            
+
             # Calculate ATR
-            atr = talib.ATR(high, low, close, timeperiod=period)
+            atr = ta.volatility.average_true_range(high, low, close, window=period)
             hl_avg = (high + low) / 2
             
             # Calculate bands
@@ -175,64 +175,60 @@ class IndicatorCalculator:
             fast = params.get('fast_period', 12)
             slow = params.get('slow_period', 26)
             signal = params.get('signal_period', 9)
-            
-            macd, signal_line, histogram = talib.MACD(
-                close, fastperiod=fast, slowperiod=slow, signalperiod=signal
-            )
+
+            macd = ta.trend.macd(close, window_fast=fast, window_slow=slow)
+            signal_line = ta.trend.macd_signal(close, window_fast=fast, window_slow=slow, window_sign=signal)
+            histogram = ta.trend.macd_diff(close, window_fast=fast, window_slow=slow, window_sign=signal)
             result['macd'] = macd.tolist()
             result['signal'] = signal_line.tolist()
             result['histogram'] = histogram.tolist()
-            result['current_macd'] = float(macd[-1]) if not np.isnan(macd[-1]) else None
-            result['current_signal'] = float(signal_line[-1]) if not np.isnan(signal_line[-1]) else None
-            result['current_histogram'] = float(histogram[-1]) if not np.isnan(histogram[-1]) else None
-            result['is_bullish'] = histogram[-1] > 0 if not np.isnan(histogram[-1]) else None
+            result['current_macd'] = float(macd.iloc[-1]) if not pd.isna(macd.iloc[-1]) else None
+            result['current_signal'] = float(signal_line.iloc[-1]) if not pd.isna(signal_line.iloc[-1]) else None
+            result['current_histogram'] = float(histogram.iloc[-1]) if not pd.isna(histogram.iloc[-1]) else None
+            result['is_bullish'] = histogram.iloc[-1] > 0 if not pd.isna(histogram.iloc[-1]) else None
         
         # RSI
         elif indicator_type == 'RSI':
             period = params.get('period', 14)
-            values = talib.RSI(close, timeperiod=period)
+            values = ta.momentum.rsi(close, window=period)
             result['values'] = values.tolist()
-            result['current'] = float(values[-1]) if not np.isnan(values[-1]) else None
-            result['is_overbought'] = values[-1] > 70 if not np.isnan(values[-1]) else None
-            result['is_oversold'] = values[-1] < 30 if not np.isnan(values[-1]) else None
-        
+            result['current'] = float(values.iloc[-1]) if not pd.isna(values.iloc[-1]) else None
+            result['is_overbought'] = values.iloc[-1] > 70 if not pd.isna(values.iloc[-1]) else None
+            result['is_oversold'] = values.iloc[-1] < 30 if not pd.isna(values.iloc[-1]) else None
+
         # ATR
         elif indicator_type == 'ATR':
             period = params.get('period', 14)
-            values = talib.ATR(high, low, close, timeperiod=period)
+            values = ta.volatility.average_true_range(high, low, close, window=period)
             result['values'] = values.tolist()
-            result['current'] = float(values[-1]) if not np.isnan(values[-1]) else None
+            result['current'] = float(values.iloc[-1]) if not pd.isna(values.iloc[-1]) else None
         
         # Stochastic
         elif indicator_type == 'STOCH':
             k_period = params.get('k_period', 14)
             d_period = params.get('d_period', 3)
-            slowk, slowd = talib.STOCH(
-                high, low, close,
-                fastk_period=k_period,
-                slowk_period=d_period,
-                slowd_period=d_period
-            )
+            slowk = ta.momentum.stoch(high, low, close, window=k_period, smooth_window=d_period)
+            slowd = ta.momentum.stoch_signal(high, low, close, window=k_period, smooth_window=d_period)
             result['k'] = slowk.tolist()
             result['d'] = slowd.tolist()
-            result['current_k'] = float(slowk[-1]) if not np.isnan(slowk[-1]) else None
-            result['current_d'] = float(slowd[-1]) if not np.isnan(slowd[-1]) else None
-            result['is_overbought'] = slowk[-1] > 80 if not np.isnan(slowk[-1]) else None
-            result['is_oversold'] = slowk[-1] < 20 if not np.isnan(slowk[-1]) else None
+            result['current_k'] = float(slowk.iloc[-1]) if not pd.isna(slowk.iloc[-1]) else None
+            result['current_d'] = float(slowd.iloc[-1]) if not pd.isna(slowd.iloc[-1]) else None
+            result['is_overbought'] = slowk.iloc[-1] > 80 if not pd.isna(slowk.iloc[-1]) else None
+            result['is_oversold'] = slowk.iloc[-1] < 20 if not pd.isna(slowk.iloc[-1]) else None
         
         # ADX (Trend Strength)
         elif indicator_type == 'ADX':
             period = params.get('period', 14)
-            values = talib.ADX(high, low, close, timeperiod=period)
+            values = ta.trend.adx(high, low, close, window=period)
             result['values'] = values.tolist()
-            result['current'] = float(values[-1]) if not np.isnan(values[-1]) else None
-            result['strong_trend'] = values[-1] > 25 if not np.isnan(values[-1]) else None
-        
+            result['current'] = float(values.iloc[-1]) if not pd.isna(values.iloc[-1]) else None
+            result['strong_trend'] = values.iloc[-1] > 25 if not pd.isna(values.iloc[-1]) else None
+
         # OBV (Volume)
         elif indicator_type == 'OBV':
-            values = talib.OBV(close, volume)
+            values = ta.volume.on_balance_volume(close, volume)
             result['values'] = values.tolist()
-            result['current'] = float(values[-1]) if not np.isnan(values[-1]) else None
+            result['current'] = float(values.iloc[-1]) if not pd.isna(values.iloc[-1]) else None
         
         else:
             logger.warning(f"Unknown indicator type: {indicator_type}")

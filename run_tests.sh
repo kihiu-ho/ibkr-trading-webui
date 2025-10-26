@@ -18,7 +18,7 @@ NC='\033[0m' # No Color
 # Check if pytest is installed
 if ! command -v pytest &> /dev/null; then
     echo -e "${RED}pytest not found. Installing...${NC}"
-    pip install pytest pytest-asyncio pytest-mock pytest-cov pandas numpy talib
+    pip install pytest pytest-asyncio pytest-mock pytest-cov pandas numpy ta psycopg2-binary croniter jinja2
 fi
 
 # Run all test suites individually

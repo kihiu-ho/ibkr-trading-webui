@@ -1,38 +1,62 @@
-FROM debian:bookworm-slim
+# Multi-stage build for optimized IBKR Gateway Docker image
+# Stage 1: Download and prepare gateway files (cached layer)
+FROM debian:bookworm-slim AS gateway-downloader
 
-# Update and upgrade packages
-RUN apt-get update && apt-get upgrade -y
+# Install minimal tools for downloading
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    unzip \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-# Install JDK and any needed utilities
-RUN apt-get install -y openjdk-17-jre-headless \
-                       unzip curl procps vim net-tools \
-                       python3 python3-pip python3.11-venv
+WORKDIR /tmp
 
-# We will put everything in the /app directory
+# Download IBKR Gateway (this layer will be cached unless the gateway is updated)
+RUN curl -L -o clientportal.gw.zip \
+    https://download2.interactivebrokers.com/portal/clientportal.gw.zip \
+    && unzip clientportal.gw.zip -d /tmp/gateway \
+    && rm clientportal.gw.zip
+
+# Stage 2: Runtime image with minimal dependencies
+FROM eclipse-temurin:17-jre-jammy AS runtime
+
+# Install only essential runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create non-root user for security
+RUN groupadd -r ibkr && useradd -r -g ibkr -s /bin/bash ibkr
+
 WORKDIR /app
 
-# Download and unzip client portal gateway
-RUN mkdir gateway && cd gateway && \
-    curl -O https://download2.interactivebrokers.com/portal/clientportal.gw.zip && \
-    unzip clientportal.gw.zip && rm clientportal.gw.zip
+# Copy gateway files from downloader stage
+COPY --from=gateway-downloader /tmp/gateway ./gateway/
+COPY --chown=ibkr:ibkr conf.yaml ./gateway/root/conf.yaml
+COPY --chown=ibkr:ibkr start.sh ./
 
-# Copy our config so that the gateway will use it
-COPY conf.yaml gateway/root/conf.yaml
-COPY start.sh /app
+# Copy application files (only what's needed)
+COPY --chown=ibkr:ibkr webapp ./webapp/
+COPY --chown=ibkr:ibkr scripts ./scripts/
 
-ADD webapp webapp
-ADD scripts scripts
+# Make start script executable
+RUN chmod +x start.sh
 
-# Commented out for now, some commands that are helpful if you want to install your own SSL certificate
-# RUN keytool -genkey -keyalg RSA -alias selfsigned -keystore cacert.jks -storepass abc123 -validity 730 -keysize 2048 -dname CN=localhost
-# RUN keytool -importkeystore -srckeystore cacert.jks -destkeystore cacert.p12 -srcstoretype jks -deststoretype pkcs12 -srcstorepass abc123 -deststorepass abc123
-# RUN openssl pkcs12 -in cacert.p12 -out cacert.pem -passin pass:abc123 -passout pass:abc123
-# RUN cp cacert.pem gateway/root/cacert.pem
-# RUN cp cacert.jks gateway/root/cacert.jks
-# RUN cp cacert.pem webapp/cacert.pem
+# Set proper ownership
+RUN chown -R ibkr:ibkr /app
 
-# Expose the port so we can connect
+# Switch to non-root user
+USER ibkr
+
+# Health check for faster startup detection
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -k -f https://localhost:5055/v1/api/tickle || exit 1
+
+# Expose ports
 EXPOSE 5055 5056
 
-# Run the gateway
-CMD sh ./start.sh
+# Use exec form for better signal handling
+CMD ["./start.sh"]
