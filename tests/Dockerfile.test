@@ -1,0 +1,28 @@
+FROM mcr.microsoft.com/playwright:v1.40.0-focal
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Install additional system dependencies for testing
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy test files
+COPY . .
+
+# Create test results directory
+RUN mkdir -p test-results
+
+# Set environment variables
+ENV CI=true
+ENV HEADLESS=true
+
+# Default command
+CMD ["npx", "playwright", "test"]

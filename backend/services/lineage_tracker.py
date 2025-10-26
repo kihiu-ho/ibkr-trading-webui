@@ -166,16 +166,17 @@ class LineageTracker:
         db = self.db_session or next(get_db())
         
         # Get unique execution IDs with their metadata
+        # Fix PostgreSQL DISTINCT ON issue by ordering by execution_id first
         query = db.query(LineageRecord).distinct(LineageRecord.execution_id)
-        
+
         if strategy_id:
             # Filter by strategy_id in step_metadata
             query = query.filter(
                 LineageRecord.step_metadata['strategy_id'].astext == str(strategy_id)
             )
-        
-        # Order by most recent first
-        query = query.order_by(desc(LineageRecord.recorded_at)).limit(limit)
+
+        # Order by execution_id first (required for DISTINCT ON), then by recorded_at
+        query = query.order_by(LineageRecord.execution_id, desc(LineageRecord.recorded_at)).limit(limit)
         
         records = query.all()
         

@@ -1,0 +1,81 @@
+# Login Workflow Test Suite Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core testing framework
+unittest2==1.1.0
+
+# HTTP client library
+requests==2.31.0
+
+# Configuration management
+configparser==5.3.0
+
+# Data structures and utilities
+dataclasses==0.8; python_version < "3.7"
+
+# Mocking and testing utilities
+mock==4.0.3
+
+# Logging and reporting
+colorlog==6.7.0
+
+# Performance testing
+pytest-benchmark==4.0.0
+
+# Parallel test execution
+pytest-xdist==3.3.1
+
+# Test coverage
+coverage==7.3.2
+
+# Security testing utilities
+bandit==1.7.5
+
+# JSON Web Token handling (for validation)
+PyJWT==2.8.0
+
+# Database connectivity (for integration tests)
+psycopg2-binary==2.9.7
+SQLAlchemy==2.0.21
+
+# Email testing utilities
+pytest-mock==3.11.1
+
+# HTML report generation
+pytest-html==4.0.2
+
+# Environment variable management
+python-dotenv==1.0.0
+
+# Date/time utilities
+python-dateutil==2.8.2
+
+# Cryptographic utilities
+cryptography==41.0.4
+
+# Network testing utilities
+responses==0.23.3
+
+# Load testing
+locust==2.17.0
+
+# API testing utilities
+tavern==2.0.1
+
+# Assertion helpers
+assertpy==1.1
+
+# Retry mechanisms
+tenacity==8.2.3
+
+# Progress bars for long-running tests
+tqdm==4.66.1
+
+# Memory profiling
+memory-profiler==0.61.0
+
+# Development dependencies
+flake8==6.1.0
+black==23.9.1
+isort==5.12.0
+mypy==1.5.1

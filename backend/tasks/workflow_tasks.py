@@ -117,7 +117,7 @@ def execute_trading_workflow(self, strategy_id: int):
         
         # Create workflow execution record
         execution = WorkflowExecution(
-            workflow_id=strategy.workflow_id,
+            workflow_id=strategy.workflow_id or 1,  # Use default workflow_id if None
             strategy_id=strategy_id,
             status='running',
             started_at=datetime.now(timezone.utc)

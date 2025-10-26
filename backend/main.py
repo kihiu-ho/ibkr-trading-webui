@@ -2,7 +2,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from backend.api import health, strategies, orders, market_data, frontend, logs, dashboard, symbols, ibkr_auth, indicators, charts, analysis, signals, prompts, lineage, positions
+from backend.api import health, strategies, orders, market_data, frontend, dashboard, ibkr_auth, indicators, signals, lineage, positions, workflows
 from backend.core.database import engine, get_db
 from backend.models import Base
 from backend.models.workflow_log import WorkflowLog
@@ -35,22 +35,18 @@ app.add_middleware(
 if os.path.exists("frontend/static"):
     app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
-# Include API routers
+# Include Core Workflow API routers
 app.include_router(health.router, tags=["health"])
+app.include_router(workflows.router, tags=["workflows"])
 app.include_router(strategies.router, prefix="/api/strategies", tags=["strategies"])
-app.include_router(orders.router, prefix="/api/orders", tags=["orders"])
 app.include_router(market_data.router, tags=["market"])
-app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
-app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
-app.include_router(symbols.router, prefix="/api/symbols", tags=["symbols"])
-app.include_router(ibkr_auth.router, prefix="/api/ibkr/auth", tags=["ibkr-auth"])
 app.include_router(indicators.router, prefix="/api/indicators", tags=["indicators"])
-app.include_router(charts.router, prefix="/api/charts", tags=["charts"])
-app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
 app.include_router(signals.router, prefix="/api/signals", tags=["signals"])
-app.include_router(prompts.router, tags=["prompts"])
-app.include_router(lineage.router, tags=["lineage"])
+app.include_router(orders.router, prefix="/api/orders", tags=["orders"])
 app.include_router(positions.router, tags=["positions"])
+app.include_router(lineage.router, tags=["lineage"])
+app.include_router(ibkr_auth.router, prefix="/api/ibkr/auth", tags=["ibkr-auth"])
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 
 # Frontend routes
 app.include_router(frontend.router, tags=["frontend"])

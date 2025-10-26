@@ -44,9 +44,9 @@ class PromptTemplate(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     # Relationships
-    strategy = relationship("Strategy", back_populates="prompt_templates")
+    strategy = relationship("Strategy", foreign_keys=[strategy_id])
     performance_records = relationship("PromptPerformance", back_populates="prompt_template", cascade="all, delete-orphan")
-    signals = relationship("TradingSignal", back_populates="prompt_template")
+    signals = relationship("TradingSignal")
     
     # Table constraints
     __table_args__ = (
@@ -132,7 +132,7 @@ class PromptPerformance(Base):
     
     # Relationships
     prompt_template = relationship("PromptTemplate", back_populates="performance_records")
-    strategy = relationship("Strategy", back_populates="prompt_performances")
+    strategy = relationship("Strategy")
     
     # Table constraints
     __table_args__ = (

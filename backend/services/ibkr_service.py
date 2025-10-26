@@ -4,6 +4,9 @@ from typing import Dict, Any, Optional, List
 from backend.config.settings import settings
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
+import asyncio
+from urllib.parse import urlencode
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -188,3 +191,151 @@ class IBKRService:
         """Get executed trades."""
         response = await self._request("GET", "/iserver/account/trades")
         return response if isinstance(response, list) else []
+
+    async def automated_login(self, username: str, password: str, trading_mode: str = "paper") -> Dict[str, Any]:
+        """
+        Perform automated login to IBKR Gateway.
+
+        Args:
+            username: IBKR username
+            password: IBKR password
+            trading_mode: "paper" or "live" trading mode
+
+        Returns:
+            Login result dictionary
+        """
+        try:
+            # First, check if we need to logout any existing session
+            await self._logout_existing_session()
+
+            # Navigate to the login endpoint
+            login_url = "https://localhost:5055/sso/Login?forwardTo=22&RL=1&ip2loc=US"
+
+            async with httpx.AsyncClient(timeout=60.0, verify=False, follow_redirects=True) as client:
+                # Get the login page to extract any required tokens/cookies
+                login_page = await client.get(login_url)
+
+                if login_page.status_code != 200:
+                    raise Exception(f"Failed to access login page: {login_page.status_code}")
+
+                # Prepare login data
+                login_data = {
+                    "username": username,
+                    "password": password,
+                    "tradingMode": trading_mode
+                }
+
+                # Submit login credentials
+                login_response = await client.post(
+                    login_url,
+                    data=login_data,
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+                    }
+                )
+
+                # Check if login was successful
+                if login_response.status_code in [200, 302]:
+                    # Wait for authentication to propagate
+                    await asyncio.sleep(3)
+
+                    # Verify authentication status
+                    auth_status = await self.check_auth_status()
+
+                    if auth_status.get('authenticated', False):
+                        logger.info("Automated login successful")
+                        return {
+                            "success": True,
+                            "message": "Login successful",
+                            "authenticated": True,
+                            "trading_mode": trading_mode
+                        }
+                    else:
+                        # May need 2FA - check for pending authentication
+                        return {
+                            "success": True,
+                            "message": "Login initiated. Please complete 2FA on your IBKR mobile app.",
+                            "authenticated": False,
+                            "requires_2fa": True,
+                            "trading_mode": trading_mode
+                        }
+                else:
+                    raise Exception(f"Login failed with status: {login_response.status_code}")
+
+        except Exception as e:
+            logger.error(f"Automated login failed: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Login failed: {str(e)}",
+                "authenticated": False,
+                "error": str(e)
+            }
+
+    async def _logout_existing_session(self) -> None:
+        """Logout any existing session before new login."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+                await client.post(f"{self.base_url}/logout")
+        except Exception:
+            # Ignore logout errors - session may not exist
+            pass
+
+    async def check_gateway_connection(self) -> Dict[str, Any]:
+        """
+        Enhanced gateway connection check with better status reporting.
+
+        Returns:
+            Dictionary with connection status, authentication state, and error details
+        """
+        try:
+            async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+                # Check tickle endpoint for server status
+                tickle_response = await client.get(f"{self.base_url}/v1/api/tickle")
+
+                if tickle_response.status_code == 200:
+                    tickle_data = tickle_response.json()
+                    auth_status = tickle_data.get('iserver', {}).get('authStatus', {})
+
+                    return {
+                        "server_online": True,
+                        "authenticated": auth_status.get('authenticated', False),
+                        "connected": auth_status.get('connected', False),
+                        "competing": auth_status.get('competing', False),
+                        "message": auth_status.get('message', ''),
+                        "gateway_url": self.base_url,
+                        "tickle_data": tickle_data
+                    }
+                else:
+                    return {
+                        "server_online": False,
+                        "authenticated": False,
+                        "connected": False,
+                        "error": f"Gateway returned status {tickle_response.status_code}",
+                        "gateway_url": self.base_url
+                    }
+
+        except httpx.ConnectError:
+            return {
+                "server_online": False,
+                "authenticated": False,
+                "connected": False,
+                "error": "Cannot connect to IBKR Gateway. Is it running?",
+                "gateway_url": self.base_url
+            }
+        except httpx.TimeoutException:
+            return {
+                "server_online": False,
+                "authenticated": False,
+                "connected": False,
+                "error": "Connection to IBKR Gateway timed out",
+                "gateway_url": self.base_url
+            }
+        except Exception as e:
+            return {
+                "server_online": False,
+                "authenticated": False,
+                "connected": False,
+                "error": f"Gateway connection error: {str(e)}",
+                "gateway_url": self.base_url
+            }

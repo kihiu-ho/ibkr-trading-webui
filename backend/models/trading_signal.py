@@ -82,8 +82,8 @@ class TradingSignal(Base):
     exit_time = Column(DateTime(timezone=True), nullable=True)
     
     # Relationships
-    strategy = relationship("Strategy", back_populates="signals")
-    prompt_template = relationship("PromptTemplate", back_populates="signals")
+    strategy = relationship("Strategy")
+    prompt_template = relationship("PromptTemplate")
     orders = relationship("Order", back_populates="signal")
     
     # Indexes

@@ -29,7 +29,7 @@ class Indicator(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relationships
-    strategies = relationship("Strategy", secondary=StrategyIndicator, back_populates="indicators")
+    # Note: Removed back_populates to fix SQLAlchemy relationship conflicts
 
 
 class IndicatorChart(Base):

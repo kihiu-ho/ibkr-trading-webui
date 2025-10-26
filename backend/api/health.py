@@ -28,7 +28,8 @@ async def health_check(db: Session = Depends(get_db)):
     # Check IBKR
     try:
         ibkr = IBKRService()
-        is_auth = await ibkr.check_authentication()
+        auth_status = await ibkr.check_auth_status()
+        is_auth = auth_status.get("authenticated", False)
         health_status["ibkr"] = "authenticated" if is_auth else "not_authenticated"
     except Exception as e:
         health_status["ibkr"] = f"error: {str(e)}"
@@ -41,7 +42,8 @@ async def check_ibkr_auth():
     """Check IBKR authentication status."""
     try:
         ibkr = IBKRService()
-        is_auth = await ibkr.check_authentication()
+        auth_status = await ibkr.check_auth_status()
+        is_auth = auth_status.get("authenticated", False)
         return {
             "authenticated": is_auth,
             "message": "IBKR is authenticated" if is_auth else "Please authenticate at https://localhost:5055"

@@ -1,53 +1,254 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - IBKR Trading{% endblock %}
-{% block page_title %}Dashboard{% endblock %}
+{% block title %}IBKR Workflow Dashboard{% endblock %}
+{% block page_title %}Workflow Management{% endblock %}
 
 {% block content %}
-<div x-data="dashboard()" x-init="init()">
-    <!-- Stats -->
-    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <!-- Total Strategies -->
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
+<div x-data="workflowDashboard()" x-init="init()"
+    <!-- Workflow Control Panel -->
+    <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-900">Workflow Control Center</h2>
+            <div class="flex space-x-4">
+                <button @click="startNewWorkflow()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+                    <i class="fa fa-play mr-2"></i>Start Workflow
+                </button>
+                <button @click="refreshData()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition">
+                    <i class="fa fa-refresh mr-2"></i>Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Workflow Stats -->
+        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+            <!-- Active Workflows -->
+            <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-4 text-white">
                 <div class="flex items-center">
                     <div class="flex-shrink-0">
-                        <i class="fa fa-brain text-3xl text-blue-500"></i>
+                        <i class="fa fa-cogs text-2xl"></i>
                     </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">Active Strategies</dt>
-                            <dd class="text-2xl font-semibold text-gray-900" x-text="stats.active_strategies">0</dd>
-                        </dl>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium opacity-90">Active Workflows</p>
+                        <p class="text-2xl font-bold" x-text="stats.activeWorkflows">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Completed Today -->
+            <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-4 text-white">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-check-circle text-2xl"></i>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium opacity-90">Completed Today</p>
+                        <p class="text-2xl font-bold" x-text="stats.completedToday">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Success Rate -->
+            <div class="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg p-4 text-white">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-chart-line text-2xl"></i>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium opacity-90">Success Rate</p>
+                        <p class="text-2xl font-bold" x-text="stats.successRate + '%'">0%</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Signals -->
+            <div class="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg p-4 text-white">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-signal text-2xl"></i>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium opacity-90">Signals Generated</p>
+                        <p class="text-2xl font-bold" x-text="stats.totalSignals">0</p>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Open Positions -->
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <i class="fa fa-briefcase text-3xl text-green-500"></i>
+    <!-- Real-time Workflow Execution Monitor -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        <!-- Active Workflow Executions -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fa fa-play-circle text-blue-600 mr-2"></i>Active Executions
+            </h3>
+            <div x-show="activeExecutions.length === 0" class="text-center py-8 text-gray-500">
+                <i class="fa fa-clock text-4xl mb-4"></i>
+                <p>No active workflow executions</p>
+            </div>
+            <div class="space-y-4">
+                <template x-for="execution in activeExecutions" :key="execution.id">
+                    <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <h4 class="font-semibold text-gray-900" x-text="execution.strategy_name"></h4>
+                                <p class="text-sm text-gray-600" x-text="execution.symbol"></p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full" x-text="execution.status"></span>
+                                <button @click="viewExecution(execution.id)" class="text-blue-600 hover:text-blue-800">
+                                    <i class="fa fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Progress Bar -->
+                        <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+                            <div class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                 :style="`width: ${execution.progress}%`"></div>
+                        </div>
+                        <div class="flex justify-between text-xs text-gray-500">
+                            <span x-text="`Step ${execution.current_step}/${execution.total_steps}`"></span>
+                            <span x-text="execution.elapsed_time"></span>
+                        </div>
                     </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">Open Positions</dt>
-                            <dd class="text-2xl font-semibold text-gray-900" x-text="stats.open_positions">0</dd>
-                        </dl>
+                </template>
+            </div>
+        </div>
+
+        <!-- Recent Workflow Results -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h3 class="text-xl font-bold text-gray-900 mb-4">
+                <i class="fa fa-history text-green-600 mr-2"></i>Recent Results
+            </h3>
+            <div x-show="recentExecutions.length === 0" class="text-center py-8 text-gray-500">
+                <i class="fa fa-list text-4xl mb-4"></i>
+                <p>No recent executions</p>
+            </div>
+            <div class="space-y-3">
+                <template x-for="execution in recentExecutions" :key="execution.id">
+                    <div class="border border-gray-200 rounded-lg p-3 hover:shadow-md transition">
+                        <div class="flex justify-between items-center">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-medium text-gray-900" x-text="execution.strategy_name"></span>
+                                    <span class="text-sm text-gray-600" x-text="execution.symbol"></span>
+                                </div>
+                                <div class="flex items-center space-x-4 mt-1">
+                                    <span :class="execution.status === 'completed' ? 'text-green-600' : execution.status === 'failed' ? 'text-red-600' : 'text-yellow-600'"
+                                          class="text-xs font-medium" x-text="execution.status"></span>
+                                    <span class="text-xs text-gray-500" x-text="execution.completed_at"></span>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span x-show="execution.profit_loss"
+                                      :class="execution.profit_loss > 0 ? 'text-green-600' : 'text-red-600'"
+                                      class="text-sm font-medium" x-text="execution.profit_loss > 0 ? '+$' + execution.profit_loss : '-$' + Math.abs(execution.profit_loss)"></span>
+                                <button @click="viewLineage(execution.id)" class="text-blue-600 hover:text-blue-800">
+                                    <i class="fa fa-sitemap"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rich Lineage Tracking Visualization -->
+    <div x-show="selectedExecution" class="bg-white rounded-lg shadow-lg p-6 mb-8">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-xl font-bold text-gray-900">
+                <i class="fa fa-sitemap text-purple-600 mr-2"></i>Workflow Lineage Tracking
+            </h3>
+            <button @click="selectedExecution = null" class="text-gray-500 hover:text-gray-700">
+                <i class="fa fa-times"></i>
+            </button>
+        </div>
+
+        <!-- Execution Overview -->
+        <div x-show="selectedExecution" class="bg-gray-50 rounded-lg p-4 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <p class="text-sm text-gray-600">Strategy</p>
+                    <p class="font-semibold" x-text="selectedExecution?.strategy_name"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Symbol</p>
+                    <p class="font-semibold" x-text="selectedExecution?.symbol"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Status</p>
+                    <span :class="selectedExecution?.status === 'completed' ? 'bg-green-100 text-green-800' : selectedExecution?.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'"
+                          class="px-2 py-1 rounded-full text-xs font-medium" x-text="selectedExecution?.status"></span>
                 </div>
             </div>
         </div>
 
-        <!-- Pending Orders -->
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <i class="fa fa-shopping-cart text-3xl text-yellow-500"></i>
+        <!-- Step-by-Step Workflow Visualization -->
+        <div class="relative">
+            <!-- Workflow Steps Timeline -->
+            <div class="space-y-6">
+                <template x-for="(step, index) in workflowSteps" :key="step.id">
+                    <div class="relative flex items-start">
+                        <!-- Timeline Line -->
+                        <div x-show="index < workflowSteps.length - 1" class="absolute left-4 top-8 w-0.5 h-16 bg-gray-300"></div>
+
+                        <!-- Step Icon -->
+                        <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
+                             :class="step.status === 'completed' ? 'bg-green-500 text-white' :
+                                     step.status === 'failed' ? 'bg-red-500 text-white' :
+                                     step.status === 'running' ? 'bg-blue-500 text-white animate-pulse' :
+                                     'bg-gray-300 text-gray-600'">
+                            <i :class="getStepIcon(step.step_name)" class="text-sm"></i>
+                        </div>
+
+                        <!-- Step Content -->
+                        <div class="ml-4 flex-1">
+                            <div class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div>
+                                        <h4 class="font-semibold text-gray-900" x-text="step.step_name"></h4>
+                                        <p class="text-sm text-gray-600" x-text="step.description"></p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-xs text-gray-500" x-text="step.duration_ms ? step.duration_ms + 'ms' : ''"></p>
+                                        <p class="text-xs text-gray-500" x-text="step.recorded_at"></p>
+                                    </div>
+                                </div>
+
+                                <!-- Step Details -->
+                                <div x-show="step.input_data || step.output_data || step.error" class="mt-3 space-y-2">
+                                    <!-- Input Data -->
+                                    <div x-show="step.input_data" class="bg-blue-50 rounded p-2">
+                                        <p class="text-xs font-medium text-blue-800 mb-1">Input:</p>
+                                        <pre class="text-xs text-blue-700 whitespace-pre-wrap" x-text="JSON.stringify(step.input_data, null, 2)"></pre>
+                                    </div>
+
+                                    <!-- Output Data -->
+                                    <div x-show="step.output_data" class="bg-green-50 rounded p-2">
+                                        <p class="text-xs font-medium text-green-800 mb-1">Output:</p>
+                                        <pre class="text-xs text-green-700 whitespace-pre-wrap" x-text="JSON.stringify(step.output_data, null, 2)"></pre>
+                                    </div>
+
+                                    <!-- Error -->
+                                    <div x-show="step.error" class="bg-red-50 rounded p-2">
+                                        <p class="text-xs font-medium text-red-800 mb-1">Error:</p>
+                                        <p class="text-xs text-red-700" x-text="step.error"></p>
+                                    </div>
+                                </div>
+
+                                <!-- Step Metadata -->
+                                <div x-show="step.step_metadata" class="mt-2 bg-gray-50 rounded p-2">
+                                    <p class="text-xs font-medium text-gray-800 mb-1">Metadata:</p>
+                                    <pre class="text-xs text-gray-600 whitespace-pre-wrap" x-text="JSON.stringify(step.step_metadata, null, 2)"></pre>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                </template>
+            </div>
+        </div>
+    </div>
                     <div class="ml-5 w-0 flex-1">
                         <dl>
                             <dt class="text-sm font-medium text-gray-500 truncate">Pending Orders</dt>
@@ -162,7 +363,268 @@
             </ul>
         </div>
     </div>
+
+    <!-- Strategy Management Panel -->
+    <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-xl font-bold text-gray-900">
+                <i class="fa fa-brain text-indigo-600 mr-2"></i>Strategy Management
+            </h3>
+            <button @click="showStrategyModal = true" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition">
+                <i class="fa fa-plus mr-2"></i>New Strategy
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <template x-for="strategy in strategies" :key="strategy.id">
+                <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <h4 class="font-semibold text-gray-900" x-text="strategy.name"></h4>
+                            <p class="text-sm text-gray-600" x-text="strategy.description"></p>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            <span :class="strategy.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'"
+                                  class="px-2 py-1 text-xs rounded-full" x-text="strategy.is_active ? 'Active' : 'Inactive'"></span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <div class="text-sm text-gray-500">
+                            <p>Success Rate: <span class="font-medium" x-text="strategy.success_rate + '%'"></span></p>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button @click="executeStrategy(strategy.id)"
+                                    :disabled="!strategy.is_active"
+                                    class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-3 py-1 rounded text-xs transition">
+                                Execute
+                            </button>
+                            <button @click="editStrategy(strategy.id)" class="text-gray-600 hover:text-gray-800">
+                                <i class="fa fa-edit"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
 </div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('workflowDashboard', () => ({
+        // Data properties
+        stats: {
+            activeWorkflows: 0,
+            completedToday: 0,
+            successRate: 0,
+            totalSignals: 0
+        },
+        activeExecutions: [],
+        recentExecutions: [],
+        strategies: [],
+        selectedExecution: null,
+        workflowSteps: [],
+        showStrategyModal: false,
+        loading: false,
+
+        // Initialize dashboard
+        async init() {
+            await this.loadDashboardData();
+            this.startRealTimeUpdates();
+        },
+
+        // Load all dashboard data
+        async loadDashboardData() {
+            this.loading = true;
+            try {
+                await Promise.all([
+                    this.loadStats(),
+                    this.loadActiveExecutions(),
+                    this.loadRecentExecutions(),
+                    this.loadStrategies()
+                ]);
+            } catch (error) {
+                console.error('Error loading dashboard data:', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        // Load workflow statistics
+        async loadStats() {
+            try {
+                const response = await fetch('/api/workflows/stats');
+                if (response.ok) {
+                    this.stats = await response.json();
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        },
+
+        // Load active workflow executions
+        async loadActiveExecutions() {
+            try {
+                const response = await fetch('/api/workflows/executions?status=running');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.activeExecutions = data.executions || [];
+                }
+            } catch (error) {
+                console.error('Error loading active executions:', error);
+            }
+        },
+
+        // Load recent workflow executions
+        async loadRecentExecutions() {
+            try {
+                const response = await fetch('/api/workflows/executions?limit=10');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.recentExecutions = data.executions || [];
+                }
+            } catch (error) {
+                console.error('Error loading recent executions:', error);
+            }
+        },
+
+        // Load strategies
+        async loadStrategies() {
+            try {
+                const response = await fetch('/api/strategies');
+                if (response.ok) {
+                    this.strategies = await response.json();
+                }
+            } catch (error) {
+                console.error('Error loading strategies:', error);
+            }
+        },
+
+        // Start new workflow execution
+        async startNewWorkflow() {
+            if (this.strategies.length === 0) {
+                alert('No strategies available. Please create a strategy first.');
+                return;
+            }
+
+            // For now, use the first active strategy
+            const activeStrategy = this.strategies.find(s => s.is_active);
+            if (!activeStrategy) {
+                alert('No active strategies found. Please activate a strategy first.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/workflows/execute', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        strategy_id: activeStrategy.id
+                    })
+                });
+
+                if (response.ok) {
+                    const execution = await response.json();
+                    alert(`Workflow started successfully! Execution ID: ${execution.id}`);
+                    await this.refreshData();
+                } else {
+                    const error = await response.json();
+                    alert(`Failed to start workflow: ${error.detail}`);
+                }
+            } catch (error) {
+                console.error('Error starting workflow:', error);
+                alert('Failed to start workflow');
+            }
+        },
+
+        // Execute specific strategy
+        async executeStrategy(strategyId) {
+            try {
+                const response = await fetch('/api/workflows/execute', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        strategy_id: strategyId
+                    })
+                });
+
+                if (response.ok) {
+                    const execution = await response.json();
+                    alert(`Strategy execution started! Execution ID: ${execution.id}`);
+                    await this.refreshData();
+                } else {
+                    const error = await response.json();
+                    alert(`Failed to execute strategy: ${error.detail}`);
+                }
+            } catch (error) {
+                console.error('Error executing strategy:', error);
+                alert('Failed to execute strategy');
+            }
+        },
+
+        // View execution details
+        async viewExecution(executionId) {
+            window.location.href = `/workflows/execution/${executionId}`;
+        },
+
+        // View workflow lineage
+        async viewLineage(executionId) {
+            try {
+                this.selectedExecution = this.recentExecutions.find(e => e.id === executionId) ||
+                                       this.activeExecutions.find(e => e.id === executionId);
+
+                const response = await fetch(`/api/lineage/execution/${executionId}`);
+                if (response.ok) {
+                    this.workflowSteps = await response.json();
+                } else {
+                    console.error('Failed to load lineage data');
+                    this.workflowSteps = [];
+                }
+            } catch (error) {
+                console.error('Error loading lineage:', error);
+                this.workflowSteps = [];
+            }
+        },
+
+        // Get step icon based on step name
+        getStepIcon(stepName) {
+            const iconMap = {
+                'market_data': 'fa-chart-line',
+                'technical_analysis': 'fa-calculator',
+                'llm_analysis': 'fa-brain',
+                'signal_generation': 'fa-signal',
+                'order_placement': 'fa-shopping-cart',
+                'risk_management': 'fa-shield-alt',
+                'portfolio_update': 'fa-briefcase'
+            };
+            return iconMap[stepName] || 'fa-cog';
+        },
+
+        // Refresh all data
+        async refreshData() {
+            await this.loadDashboardData();
+        },
+
+        // Start real-time updates
+        startRealTimeUpdates() {
+            // Update every 30 seconds
+            setInterval(async () => {
+                await this.loadActiveExecutions();
+                await this.loadStats();
+            }, 30000);
+        },
+
+        // Edit strategy
+        editStrategy(strategyId) {
+            window.location.href = `/strategies/${strategyId}/edit`;
+        }
+    }));
+});
+</script>
 {% endblock %}
 
 {% block scripts %}

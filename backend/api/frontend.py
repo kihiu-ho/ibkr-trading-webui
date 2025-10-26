@@ -38,11 +38,17 @@ async def workflows_list(request: Request):
     return templates.TemplateResponse("workflows/list.html", {"request": request})
 
 
+@router.get("/workflows/lineage", response_class=HTMLResponse)
+async def workflows_lineage(request: Request):
+    """Workflow lineage tracking page."""
+    return templates.TemplateResponse("workflows/lineage.html", {"request": request})
+
+
 @router.get("/workflows/executions/{execution_id}", response_class=HTMLResponse)
 async def workflow_execution(request: Request, execution_id: int):
     """Workflow execution detail page with real-time monitoring."""
     return templates.TemplateResponse(
-        "workflows/execution.html", 
+        "workflows/execution.html",
         {
             "request": request,
             "execution_id": execution_id

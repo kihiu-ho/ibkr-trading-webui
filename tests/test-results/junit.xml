@@ -1,0 +1,117 @@
+<testsuites id="" name="" tests="1" failures="1" skipped="0" errors="0" time="5.241694">
+<testsuite name="auth.setup.ts" timestamp="2025-10-26T15:27:17.755Z" hostname="setup" tests="1" failures="1" skipped="0" time="2.114" errors="0">
+<testcase name="verify application health" classname="auth.setup.ts" time="2.114">
+<failure message="auth.setup.ts:102:6 verify application health" type="FAILURE">
+<![CDATA[  [setup] › auth.setup.ts:102:6 › verify application health ────────────────────────────────────────
+
+    Error: expect(received).toBeTruthy()
+
+    Received: false
+
+      114 |   // Verify API health endpoint
+      115 |   const response = await page.request.get('/health');
+    > 116 |   expect(response.ok()).toBeTruthy();
+          |                         ^
+      117 |   
+      118 |   console.log('✅ Application health check passed');
+      119 | });
+        at /Users/he/git/ibkr-trading-webui/tests/e2e/auth.setup.ts:116:25
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../test-results/auth.setup.ts-verify-application-health-setup/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../test-results/auth.setup.ts-verify-application-health-setup/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../test-results/auth.setup.ts-verify-application-health-setup/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(received).toBeTruthy()
+
+    Received: false
+
+      114 |   // Verify API health endpoint
+      115 |   const response = await page.request.get('/health');
+    > 116 |   expect(response.ok()).toBeTruthy();
+          |                         ^
+      117 |   
+      118 |   console.log('✅ Application health check passed');
+      119 | });
+        at /Users/he/git/ibkr-trading-webui/tests/e2e/auth.setup.ts:116:25
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../test-results/auth.setup.ts-verify-application-health-setup-retry1/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../test-results/auth.setup.ts-verify-application-health-setup-retry1/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../test-results/auth.setup.ts-verify-application-health-setup-retry1/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../test-results/auth.setup.ts-verify-application-health-setup-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace ../test-results/auth.setup.ts-verify-application-health-setup-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(received).toBeTruthy()
+
+    Received: false
+
+      114 |   // Verify API health endpoint
+      115 |   const response = await page.request.get('/health');
+    > 116 |   expect(response.ok()).toBeTruthy();
+          |                         ^
+      117 |   
+      118 |   console.log('✅ Application health check passed');
+      119 | });
+        at /Users/he/git/ibkr-trading-webui/tests/e2e/auth.setup.ts:116:25
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../test-results/auth.setup.ts-verify-application-health-setup-retry2/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../test-results/auth.setup.ts-verify-application-health-setup-retry2/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../test-results/auth.setup.ts-verify-application-health-setup-retry2/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[🏥 Checking application health...
+
+[[ATTACHMENT|auth.setup.ts-verify-application-health-setup/test-failed-1.png]]
+
+[[ATTACHMENT|auth.setup.ts-verify-application-health-setup/video.webm]]
+
+[[ATTACHMENT|auth.setup.ts-verify-application-health-setup/error-context.md]]
+🏥 Checking application health...
+
+[[ATTACHMENT|auth.setup.ts-verify-application-health-setup-retry1/test-failed-1.png]]
+
+[[ATTACHMENT|auth.setup.ts-verify-application-health-setup-retry1/video.webm]]
+
+[[ATTACHMENT|auth.setup.ts-verify-application-health-setup-retry1/error-context.md]]
+
+[[ATTACHMENT|auth.setup.ts-verify-application-health-setup-retry1/trace.zip]]
+🏥 Checking application health...
+
+[[ATTACHMENT|auth.setup.ts-verify-application-health-setup-retry2/test-failed-1.png]]
+
+[[ATTACHMENT|auth.setup.ts-verify-application-health-setup-retry2/video.webm]]
+
+[[ATTACHMENT|auth.setup.ts-verify-application-health-setup-retry2/error-context.md]]
+]]>
+</system-out>
+</testcase>
+</testsuite>
+</testsuites>

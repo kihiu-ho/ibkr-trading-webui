@@ -1,0 +1,41 @@
+{
+  "strategies": [
+    {
+      "id": 1,
+      "name": "Test Strategy - AAPL Momentum",
+      "symbol": "AAPL",
+      "active": true,
+      "param": {
+        "account_size": 100000,
+        "risk_per_trade": 0.02,
+        "min_r_coefficient": 2,
+        "min_profit_margin": 3,
+        "delay_between_symbols": 30
+      }
+    },
+    {
+      "id": 2,
+      "name": "Test Strategy - TSLA Swing",
+      "symbol": "TSLA",
+      "active": false,
+      "param": {
+        "account_size": 50000,
+        "risk_per_trade": 0.03,
+        "min_r_coefficient": 1.5,
+        "min_profit_margin": 2.5,
+        "delay_between_symbols": 60
+      }
+    }
+  ],
+  "executions": [
+    {
+      "id": "test_execution_1",
+      "strategy_id": 1,
+      "status": "completed",
+      "started_at": "2025-10-26T15:27:15.882Z",
+      "completed_at": "2025-10-26T15:27:15.882Z",
+      "steps": 8,
+      "success": true
+    }
+  ]
+}

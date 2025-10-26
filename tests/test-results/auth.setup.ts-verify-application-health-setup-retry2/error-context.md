@@ -1,0 +1,618 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - heading "Directory listing for /" [level=1] [ref=e2]
+  - separator [ref=e3]
+  - list [ref=e4]:
+    - listitem [ref=e5]:
+      - link ".cursor/" [ref=e6] [cursor=pointer]:
+        - /url: .cursor/
+    - listitem [ref=e7]:
+      - link ".dockerignore" [ref=e8] [cursor=pointer]:
+        - /url: .dockerignore
+    - listitem [ref=e9]:
+      - link ".DS_Store" [ref=e10] [cursor=pointer]:
+        - /url: .DS_Store
+    - listitem [ref=e11]:
+      - link ".env" [ref=e12] [cursor=pointer]:
+        - /url: .env
+    - listitem [ref=e13]:
+      - link ".env.bak" [ref=e14] [cursor=pointer]:
+        - /url: .env.bak
+    - listitem [ref=e15]:
+      - link ".env.broken" [ref=e16] [cursor=pointer]:
+        - /url: .env.broken
+    - listitem [ref=e17]:
+      - link ".env.example" [ref=e18] [cursor=pointer]:
+        - /url: .env.example
+    - listitem [ref=e19]:
+      - link ".git/" [ref=e20] [cursor=pointer]:
+        - /url: .git/
+    - listitem [ref=e21]:
+      - link ".pytest_cache/" [ref=e22] [cursor=pointer]:
+        - /url: .pytest_cache/
+    - listitem [ref=e23]:
+      - link "__pycache__/" [ref=e24] [cursor=pointer]:
+        - /url: __pycache__/
+    - listitem [ref=e25]:
+      - link "AGENTS.md" [ref=e26] [cursor=pointer]:
+        - /url: AGENTS.md
+    - listitem [ref=e27]:
+      - link "ALL_FIXED.md" [ref=e28] [cursor=pointer]:
+        - /url: ALL_FIXED.md
+    - listitem [ref=e29]:
+      - link "ALL_FIXES_FINAL_SUMMARY.md" [ref=e30] [cursor=pointer]:
+        - /url: ALL_FIXES_FINAL_SUMMARY.md
+    - listitem [ref=e31]:
+      - link "ALL_FIXES_SUMMARY.md" [ref=e32] [cursor=pointer]:
+        - /url: ALL_FIXES_SUMMARY.md
+    - listitem [ref=e33]:
+      - link "ALL_ISSUES_RESOLVED.md" [ref=e34] [cursor=pointer]:
+        - /url: ALL_ISSUES_RESOLVED.md
+    - listitem [ref=e35]:
+      - link "ALL_SQLALCHEMY_FIXES_COMPLETE.md" [ref=e36] [cursor=pointer]:
+        - /url: ALL_SQLALCHEMY_FIXES_COMPLETE.md
+    - listitem [ref=e37]:
+      - link "ANALYSIS_CHART_INTEGRATION_COMPLETE.md" [ref=e38] [cursor=pointer]:
+        - /url: ANALYSIS_CHART_INTEGRATION_COMPLETE.md
+    - listitem [ref=e39]:
+      - link "ANALYSIS_NONE_FIX_COMPLETE.md" [ref=e40] [cursor=pointer]:
+        - /url: ANALYSIS_NONE_FIX_COMPLETE.md
+    - listitem [ref=e41]:
+      - link "API_ENDPOINTS_FIXED.md" [ref=e42] [cursor=pointer]:
+        - /url: API_ENDPOINTS_FIXED.md
+    - listitem [ref=e43]:
+      - link "backend/" [ref=e44] [cursor=pointer]:
+        - /url: backend/
+    - listitem [ref=e45]:
+      - link "BUILD_PROGRESS_SESSION_1.md" [ref=e46] [cursor=pointer]:
+        - /url: BUILD_PROGRESS_SESSION_1.md
+    - listitem [ref=e47]:
+      - link "BUILD_SESSION_3_COMPLETE.md" [ref=e48] [cursor=pointer]:
+        - /url: BUILD_SESSION_3_COMPLETE.md
+    - listitem [ref=e49]:
+      - link "BUILD_SUMMARY.md" [ref=e50] [cursor=pointer]:
+        - /url: BUILD_SUMMARY.md
+    - listitem [ref=e51]:
+      - link "BUILDKIT_WORKAROUND.md" [ref=e52] [cursor=pointer]:
+        - /url: BUILDKIT_WORKAROUND.md
+    - listitem [ref=e53]:
+      - link "CHART_VISUALIZATION_COMPLETE.md" [ref=e54] [cursor=pointer]:
+        - /url: CHART_VISUALIZATION_COMPLETE.md
+    - listitem [ref=e55]:
+      - link "CHARTS_AND_FRONTEND_FIXES_COMPLETE.md" [ref=e56] [cursor=pointer]:
+        - /url: CHARTS_AND_FRONTEND_FIXES_COMPLETE.md
+    - listitem [ref=e57]:
+      - link "check-services.sh" [ref=e58] [cursor=pointer]:
+        - /url: check-services.sh
+    - listitem [ref=e59]:
+      - link "check_ibkr_auth.sh" [ref=e60] [cursor=pointer]:
+        - /url: check_ibkr_auth.sh
+    - listitem [ref=e61]:
+      - link "check_llm_config.py" [ref=e62] [cursor=pointer]:
+        - /url: check_llm_config.py
+    - listitem [ref=e63]:
+      - link "CLEANUP_SUMMARY.md" [ref=e64] [cursor=pointer]:
+        - /url: CLEANUP_SUMMARY.md
+    - listitem [ref=e65]:
+      - link "COMPLETE_FRONTEND_IMPLEMENTATION.md" [ref=e66] [cursor=pointer]:
+        - /url: COMPLETE_FRONTEND_IMPLEMENTATION.md
+    - listitem [ref=e67]:
+      - link "COMPLETE_SESSION_SUMMARY.md" [ref=e68] [cursor=pointer]:
+        - /url: COMPLETE_SESSION_SUMMARY.md
+    - listitem [ref=e69]:
+      - link "COMPLETE_SUMMARY.md" [ref=e70] [cursor=pointer]:
+        - /url: COMPLETE_SUMMARY.md
+    - listitem [ref=e71]:
+      - link "COMPLETED_TASKS.md" [ref=e72] [cursor=pointer]:
+        - /url: COMPLETED_TASKS.md
+    - listitem [ref=e73]:
+      - link "COMPREHENSIVE_ANALYSIS_COMPLETE.md" [ref=e74] [cursor=pointer]:
+        - /url: COMPREHENSIVE_ANALYSIS_COMPLETE.md
+    - listitem [ref=e75]:
+      - link "conf.yaml" [ref=e76] [cursor=pointer]:
+        - /url: conf.yaml
+    - listitem [ref=e77]:
+      - link "CONFIGURABLE_PROMPTS_PROPOSAL.md" [ref=e78] [cursor=pointer]:
+        - /url: CONFIGURABLE_PROMPTS_PROPOSAL.md
+    - listitem [ref=e79]:
+      - link "CRITICAL_FIXES_APPLIED.md" [ref=e80] [cursor=pointer]:
+        - /url: CRITICAL_FIXES_APPLIED.md
+    - listitem [ref=e81]:
+      - link "CURRENT_STATUS.md" [ref=e82] [cursor=pointer]:
+        - /url: CURRENT_STATUS.md
+    - listitem [ref=e83]:
+      - link "CURRENT_STATUS_SUMMARY.md" [ref=e84] [cursor=pointer]:
+        - /url: CURRENT_STATUS_SUMMARY.md
+    - listitem [ref=e85]:
+      - link "database/" [ref=e86] [cursor=pointer]:
+        - /url: database/
+    - listitem [ref=e87]:
+      - link "DATABASE_SETUP.md" [ref=e88] [cursor=pointer]:
+        - /url: DATABASE_SETUP.md
+    - listitem [ref=e89]:
+      - link "deploy_prompt_system.sh" [ref=e90] [cursor=pointer]:
+        - /url: deploy_prompt_system.sh
+    - listitem [ref=e91]:
+      - link "DEPLOYMENT_IMPROVED.md" [ref=e92] [cursor=pointer]:
+        - /url: DEPLOYMENT_IMPROVED.md
+    - listitem [ref=e93]:
+      - link "DEPLOYMENT_SUCCESS.md" [ref=e94] [cursor=pointer]:
+        - /url: DEPLOYMENT_SUCCESS.md
+    - listitem [ref=e95]:
+      - link "DIAGNOSIS_COMPLETE.md" [ref=e96] [cursor=pointer]:
+        - /url: DIAGNOSIS_COMPLETE.md
+    - listitem [ref=e97]:
+      - link "docker/" [ref=e98] [cursor=pointer]:
+        - /url: docker/
+    - listitem [ref=e99]:
+      - link "docker-compose.yml" [ref=e100] [cursor=pointer]:
+        - /url: docker-compose.yml
+    - listitem [ref=e101]:
+      - link "DOCKER_INTEGRATED.md" [ref=e102] [cursor=pointer]:
+        - /url: DOCKER_INTEGRATED.md
+    - listitem [ref=e103]:
+      - link "DOCKER_OPTIMIZATION_COMPLETE.md" [ref=e104] [cursor=pointer]:
+        - /url: DOCKER_OPTIMIZATION_COMPLETE.md
+    - listitem [ref=e105]:
+      - link "DOCKER_READY_FIXED.md" [ref=e106] [cursor=pointer]:
+        - /url: DOCKER_READY_FIXED.md
+    - listitem [ref=e107]:
+      - link "DOCKER_SETUP_COMPLETE.md" [ref=e108] [cursor=pointer]:
+        - /url: DOCKER_SETUP_COMPLETE.md
+    - listitem [ref=e109]:
+      - link "DOCKER_STARTUP_FIXED.md" [ref=e110] [cursor=pointer]:
+        - /url: DOCKER_STARTUP_FIXED.md
+    - listitem [ref=e111]:
+      - link "DOCKER_STARTUP_OPTIMIZATION_EXPLAINED.md" [ref=e112] [cursor=pointer]:
+        - /url: DOCKER_STARTUP_OPTIMIZATION_EXPLAINED.md
+    - listitem [ref=e113]:
+      - link "DOCKER_UPDATES.md" [ref=e114] [cursor=pointer]:
+        - /url: DOCKER_UPDATES.md
+    - listitem [ref=e115]:
+      - link "Dockerfile" [ref=e116] [cursor=pointer]:
+        - /url: Dockerfile
+    - listitem [ref=e117]:
+      - link "docs/" [ref=e118] [cursor=pointer]:
+        - /url: docs/
+    - listitem [ref=e119]:
+      - link "ENGLISH_ANALYSIS_COMPLETE.md" [ref=e120] [cursor=pointer]:
+        - /url: ENGLISH_ANALYSIS_COMPLETE.md
+    - listitem [ref=e121]:
+      - link "env.example" [ref=e122] [cursor=pointer]:
+        - /url: env.example
+    - listitem [ref=e123]:
+      - link "ENV_FILE_SYNTAX_GUIDE.md" [ref=e124] [cursor=pointer]:
+        - /url: ENV_FILE_SYNTAX_GUIDE.md
+    - listitem [ref=e125]:
+      - link "ENV_FIX_COMPLETE.md" [ref=e126] [cursor=pointer]:
+        - /url: ENV_FIX_COMPLETE.md
+    - listitem [ref=e127]:
+      - link "FINAL_100_PERCENT_COMPLETE.md" [ref=e128] [cursor=pointer]:
+        - /url: FINAL_100_PERCENT_COMPLETE.md
+    - listitem [ref=e129]:
+      - link "FINAL_FIX_COMPLETE.txt" [ref=e130] [cursor=pointer]:
+        - /url: FINAL_FIX_COMPLETE.txt
+    - listitem [ref=e131]:
+      - link "FINAL_IMPLEMENTATION_SUMMARY.md" [ref=e132] [cursor=pointer]:
+        - /url: FINAL_IMPLEMENTATION_SUMMARY.md
+    - listitem [ref=e133]:
+      - link "FINAL_SETUP_GUIDE.md" [ref=e134] [cursor=pointer]:
+        - /url: FINAL_SETUP_GUIDE.md
+    - listitem [ref=e135]:
+      - link "FINAL_STATUS.md" [ref=e136] [cursor=pointer]:
+        - /url: FINAL_STATUS.md
+    - listitem [ref=e137]:
+      - link "FINAL_SUMMARY_ALL_FIXES.md" [ref=e138] [cursor=pointer]:
+        - /url: FINAL_SUMMARY_ALL_FIXES.md
+    - listitem [ref=e139]:
+      - link "FINAL_TEST_SUITE_COMPLETE.md" [ref=e140] [cursor=pointer]:
+        - /url: FINAL_TEST_SUITE_COMPLETE.md
+    - listitem [ref=e141]:
+      - link "FIX_AND_START.sh" [ref=e142] [cursor=pointer]:
+        - /url: FIX_AND_START.sh
+    - listitem [ref=e143]:
+      - link "FIX_COMPLETE_README.md" [ref=e144] [cursor=pointer]:
+        - /url: FIX_COMPLETE_README.md
+    - listitem [ref=e145]:
+      - link "FIX_LLM_CONFIG.md" [ref=e146] [cursor=pointer]:
+        - /url: FIX_LLM_CONFIG.md
+    - listitem [ref=e147]:
+      - link "FIX_SLOW_DOCKER_BUILD.md" [ref=e148] [cursor=pointer]:
+        - /url: FIX_SLOW_DOCKER_BUILD.md
+    - listitem [ref=e149]:
+      - link "FIXES_APPLIED.md" [ref=e150] [cursor=pointer]:
+        - /url: FIXES_APPLIED.md
+    - listitem [ref=e151]:
+      - link "FIXES_APPLIED_SUMMARY.md" [ref=e152] [cursor=pointer]:
+        - /url: FIXES_APPLIED_SUMMARY.md
+    - listitem [ref=e153]:
+      - link "FIXES_COMPLETE.md" [ref=e154] [cursor=pointer]:
+        - /url: FIXES_COMPLETE.md
+    - listitem [ref=e155]:
+      - link "FIXES_SUMMARY.md" [ref=e156] [cursor=pointer]:
+        - /url: FIXES_SUMMARY.md
+    - listitem [ref=e157]:
+      - link "frontend/" [ref=e158] [cursor=pointer]:
+        - /url: frontend/
+    - listitem [ref=e159]:
+      - link "FRONTEND_COMPLETE_USER_GUIDE.md" [ref=e160] [cursor=pointer]:
+        - /url: FRONTEND_COMPLETE_USER_GUIDE.md
+    - listitem [ref=e161]:
+      - link "FRONTEND_IMPLEMENTATION_COMPLETE.md" [ref=e162] [cursor=pointer]:
+        - /url: FRONTEND_IMPLEMENTATION_COMPLETE.md
+    - listitem [ref=e163]:
+      - link "FRONTEND_IMPLEMENTATION_PROGRESS.md" [ref=e164] [cursor=pointer]:
+        - /url: FRONTEND_IMPLEMENTATION_PROGRESS.md
+    - listitem [ref=e165]:
+      - link "FRONTEND_REDESIGN_PLAN.md" [ref=e166] [cursor=pointer]:
+        - /url: FRONTEND_REDESIGN_PLAN.md
+    - listitem [ref=e167]:
+      - link "GATEWAY_FIX_SUMMARY.md" [ref=e168] [cursor=pointer]:
+        - /url: GATEWAY_FIX_SUMMARY.md
+    - listitem [ref=e169]:
+      - link "IBKR_AUTH_INDICATORS_COMPLETE.md" [ref=e170] [cursor=pointer]:
+        - /url: IBKR_AUTH_INDICATORS_COMPLETE.md
+    - listitem [ref=e171]:
+      - link "IBKR_AUTH_REQUIRED.md" [ref=e172] [cursor=pointer]:
+        - /url: IBKR_AUTH_REQUIRED.md
+    - listitem [ref=e173]:
+      - link "IBKR_GATEWAY_FIXED.md" [ref=e174] [cursor=pointer]:
+        - /url: IBKR_GATEWAY_FIXED.md
+    - listitem [ref=e175]:
+      - link "IMPLEMENTATION_COMPLETE.md" [ref=e176] [cursor=pointer]:
+        - /url: IMPLEMENTATION_COMPLETE.md
+    - listitem [ref=e177]:
+      - link "IMPLEMENTATION_COMPLETE_SUMMARY.md" [ref=e178] [cursor=pointer]:
+        - /url: IMPLEMENTATION_COMPLETE_SUMMARY.md
+    - listitem [ref=e179]:
+      - link "IMPLEMENTATION_PROGRESS.md" [ref=e180] [cursor=pointer]:
+        - /url: IMPLEMENTATION_PROGRESS.md
+    - listitem [ref=e181]:
+      - link "IMPLEMENTATION_SUMMARY.md" [ref=e182] [cursor=pointer]:
+        - /url: IMPLEMENTATION_SUMMARY.md
+    - listitem [ref=e183]:
+      - link "INDICATOR_CHARTING_OPENSPEC.md" [ref=e184] [cursor=pointer]:
+        - /url: INDICATOR_CHARTING_OPENSPEC.md
+    - listitem [ref=e185]:
+      - link "LATEST_UPDATE.md" [ref=e186] [cursor=pointer]:
+        - /url: LATEST_UPDATE.md
+    - listitem [ref=e187]:
+      - link "LICENSE" [ref=e188] [cursor=pointer]:
+        - /url: LICENSE
+    - listitem [ref=e189]:
+      - link "LLM_CHART_SIGNALS_PROPOSAL.md" [ref=e190] [cursor=pointer]:
+        - /url: LLM_CHART_SIGNALS_PROPOSAL.md
+    - listitem [ref=e191]:
+      - link "LLM_CONFIG_COMPLETE.md" [ref=e192] [cursor=pointer]:
+        - /url: LLM_CONFIG_COMPLETE.md
+    - listitem [ref=e193]:
+      - link "LLM_SIGNALS_COMPLETE.md" [ref=e194] [cursor=pointer]:
+        - /url: LLM_SIGNALS_COMPLETE.md
+    - listitem [ref=e195]:
+      - link "LLM_SIGNALS_IMPLEMENTATION_STATUS.md" [ref=e196] [cursor=pointer]:
+        - /url: LLM_SIGNALS_IMPLEMENTATION_STATUS.md
+    - listitem [ref=e197]:
+      - link "LLM_TRADING_FRONTEND_IMPLEMENTATION_SUMMARY.md" [ref=e198] [cursor=pointer]:
+        - /url: LLM_TRADING_FRONTEND_IMPLEMENTATION_SUMMARY.md
+    - listitem [ref=e199]:
+      - link "logs/" [ref=e200] [cursor=pointer]:
+        - /url: logs/
+    - listitem [ref=e201]:
+      - link "METADATA_COLUMN_FIX.md" [ref=e202] [cursor=pointer]:
+        - /url: METADATA_COLUMN_FIX.md
+    - listitem [ref=e203]:
+      - link "MINIO_FIX_SUCCESS.md" [ref=e204] [cursor=pointer]:
+        - /url: MINIO_FIX_SUCCESS.md
+    - listitem [ref=e205]:
+      - link "MINIO_URL_FIX_COMPLETE.md" [ref=e206] [cursor=pointer]:
+        - /url: MINIO_URL_FIX_COMPLETE.md
+    - listitem [ref=e207]:
+      - link "node_modules/" [ref=e208] [cursor=pointer]:
+        - /url: node_modules/
+    - listitem [ref=e209]:
+      - link "NOW_FIXED.txt" [ref=e210] [cursor=pointer]:
+        - /url: NOW_FIXED.txt
+    - listitem [ref=e211]:
+      - link "ONE_COMMAND_START.md" [ref=e212] [cursor=pointer]:
+        - /url: ONE_COMMAND_START.md
+    - listitem [ref=e213]:
+      - link "OPENAI_API_CONFIGURATION.md" [ref=e214] [cursor=pointer]:
+        - /url: OPENAI_API_CONFIGURATION.md
+    - listitem [ref=e215]:
+      - link "OPENAI_BASE_URL_FIX_SUMMARY.md" [ref=e216] [cursor=pointer]:
+        - /url: OPENAI_BASE_URL_FIX_SUMMARY.md
+    - listitem [ref=e217]:
+      - link "openspec/" [ref=e218] [cursor=pointer]:
+        - /url: openspec/
+    - listitem [ref=e219]:
+      - link "OPENSPEC_PROPOSAL_COMPLETE.md" [ref=e220] [cursor=pointer]:
+        - /url: OPENSPEC_PROPOSAL_COMPLETE.md
+    - listitem [ref=e221]:
+      - link "OPENSPEC_STATUS_COMPLETE.md" [ref=e222] [cursor=pointer]:
+        - /url: OPENSPEC_STATUS_COMPLETE.md
+    - listitem [ref=e223]:
+      - link "OPENSPEC_STATUS_SUMMARY.md" [ref=e224] [cursor=pointer]:
+        - /url: OPENSPEC_STATUS_SUMMARY.md
+    - listitem [ref=e225]:
+      - link "OPTIMIZATION_SUMMARY.md" [ref=e226] [cursor=pointer]:
+        - /url: OPTIMIZATION_SUMMARY.md
+    - listitem [ref=e227]:
+      - link "package-lock.json" [ref=e228] [cursor=pointer]:
+        - /url: package-lock.json
+    - listitem [ref=e229]:
+      - link "package.json" [ref=e230] [cursor=pointer]:
+        - /url: package.json
+    - listitem [ref=e231]:
+      - link "PHASES_8_9_COMPLETE.md" [ref=e232] [cursor=pointer]:
+        - /url: PHASES_8_9_COMPLETE.md
+    - listitem [ref=e233]:
+      - link "PLACEHOLDER_FIX_COMPLETE.md" [ref=e234] [cursor=pointer]:
+        - /url: PLACEHOLDER_FIX_COMPLETE.md
+    - listitem [ref=e235]:
+      - link "PLACEHOLDER_FIX_SUMMARY.md" [ref=e236] [cursor=pointer]:
+        - /url: PLACEHOLDER_FIX_SUMMARY.md
+    - listitem [ref=e237]:
+      - link "postcss.config.js" [ref=e238] [cursor=pointer]:
+        - /url: postcss.config.js
+    - listitem [ref=e239]:
+      - link "PROJECT_COMPLETE.md" [ref=e240] [cursor=pointer]:
+        - /url: PROJECT_COMPLETE.md
+    - listitem [ref=e241]:
+      - link "PROJECT_COMPLETE_README.md" [ref=e242] [cursor=pointer]:
+        - /url: PROJECT_COMPLETE_README.md
+    - listitem [ref=e243]:
+      - link "PROPOSAL_UPDATED_V2.md" [ref=e244] [cursor=pointer]:
+        - /url: PROPOSAL_UPDATED_V2.md
+    - listitem [ref=e245]:
+      - link "PSYCOPG_FIX_SUMMARY.md" [ref=e246] [cursor=pointer]:
+        - /url: PSYCOPG_FIX_SUMMARY.md
+    - listitem [ref=e247]:
+      - link "pytest.ini" [ref=e248] [cursor=pointer]:
+        - /url: pytest.ini
+    - listitem [ref=e249]:
+      - link "QUICK_FIX_DATABASE_URL.md" [ref=e250] [cursor=pointer]:
+        - /url: QUICK_FIX_DATABASE_URL.md
+    - listitem [ref=e251]:
+      - link "QUICK_FIX_GUIDE.md" [ref=e252] [cursor=pointer]:
+        - /url: QUICK_FIX_GUIDE.md
+    - listitem [ref=e253]:
+      - link "QUICK_OPENAI_FIX.md" [ref=e254] [cursor=pointer]:
+        - /url: QUICK_OPENAI_FIX.md
+    - listitem [ref=e255]:
+      - link "QUICK_REFERENCE.md" [ref=e256] [cursor=pointer]:
+        - /url: QUICK_REFERENCE.md
+    - listitem [ref=e257]:
+      - link "QUICK_START.txt" [ref=e258] [cursor=pointer]:
+        - /url: QUICK_START.txt
+    - listitem [ref=e259]:
+      - link "QUICK_START_AFTER_FIX.md" [ref=e260] [cursor=pointer]:
+        - /url: QUICK_START_AFTER_FIX.md
+    - listitem [ref=e261]:
+      - link "QUICK_START_OPTIMIZED.md" [ref=e262] [cursor=pointer]:
+        - /url: QUICK_START_OPTIMIZED.md
+    - listitem [ref=e263]:
+      - link "QUICK_START_PROMPT_SYSTEM.md" [ref=e264] [cursor=pointer]:
+        - /url: QUICK_START_PROMPT_SYSTEM.md
+    - listitem [ref=e265]:
+      - link "QUICK_START_PROMPTS.md" [ref=e266] [cursor=pointer]:
+        - /url: QUICK_START_PROMPTS.md
+    - listitem [ref=e267]:
+      - link "QUICK_START_TESTING_GUIDE.md" [ref=e268] [cursor=pointer]:
+        - /url: QUICK_START_TESTING_GUIDE.md
+    - listitem [ref=e269]:
+      - link "QUICK_STATUS.md" [ref=e270] [cursor=pointer]:
+        - /url: QUICK_STATUS.md
+    - listitem [ref=e271]:
+      - link "QUICK_SUMMARY.md" [ref=e272] [cursor=pointer]:
+        - /url: QUICK_SUMMARY.md
+    - listitem [ref=e273]:
+      - link "QUICKSTART.md" [ref=e274] [cursor=pointer]:
+        - /url: QUICKSTART.md
+    - listitem [ref=e275]:
+      - link "QUICKSTART_DOCKER.md" [ref=e276] [cursor=pointer]:
+        - /url: QUICKSTART_DOCKER.md
+    - listitem [ref=e277]:
+      - link "README.implementation.md" [ref=e278] [cursor=pointer]:
+        - /url: README.implementation.md
+    - listitem [ref=e279]:
+      - link "README.md" [ref=e280] [cursor=pointer]:
+        - /url: README.md
+    - listitem [ref=e281]:
+      - link "README_CHECK_LLM.md" [ref=e282] [cursor=pointer]:
+        - /url: README_CHECK_LLM.md
+    - listitem [ref=e283]:
+      - link "README_FRONTEND_READY.md" [ref=e284] [cursor=pointer]:
+        - /url: README_FRONTEND_READY.md
+    - listitem [ref=e285]:
+      - link "README_STARTUP.md" [ref=e286] [cursor=pointer]:
+        - /url: README_STARTUP.md
+    - listitem [ref=e287]:
+      - link "READY_TO_TEST.md" [ref=e288] [cursor=pointer]:
+        - /url: READY_TO_TEST.md
+    - listitem [ref=e289]:
+      - link "reference/" [ref=e290] [cursor=pointer]:
+        - /url: reference/
+    - listitem [ref=e291]:
+      - link "reload-env.sh" [ref=e292] [cursor=pointer]:
+        - /url: reload-env.sh
+    - listitem [ref=e293]:
+      - link "rollback_prompt_system.sh" [ref=e294] [cursor=pointer]:
+        - /url: rollback_prompt_system.sh
+    - listitem [ref=e295]:
+      - link "run_tests.sh" [ref=e296] [cursor=pointer]:
+        - /url: run_tests.sh
+    - listitem [ref=e297]:
+      - link "scripts/" [ref=e298] [cursor=pointer]:
+        - /url: scripts/
+    - listitem [ref=e299]:
+      - link "SERVICE_STARTUP_FIXES_COMPLETE.md" [ref=e300] [cursor=pointer]:
+        - /url: SERVICE_STARTUP_FIXES_COMPLETE.md
+    - listitem [ref=e301]:
+      - link "SESSION_2_FINAL_SUMMARY.md" [ref=e302] [cursor=pointer]:
+        - /url: SESSION_2_FINAL_SUMMARY.md
+    - listitem [ref=e303]:
+      - link "SESSION_COMPLETE_SUMMARY.md" [ref=e304] [cursor=pointer]:
+        - /url: SESSION_COMPLETE_SUMMARY.md
+    - listitem [ref=e305]:
+      - link "SESSION_FINAL_SUMMARY.md" [ref=e306] [cursor=pointer]:
+        - /url: SESSION_FINAL_SUMMARY.md
+    - listitem [ref=e307]:
+      - link "SETUP_DEPENDENCIES.md" [ref=e308] [cursor=pointer]:
+        - /url: SETUP_DEPENDENCIES.md
+    - listitem [ref=e309]:
+      - link "SIGNAL_ERROR_FIXED.md" [ref=e310] [cursor=pointer]:
+        - /url: SIGNAL_ERROR_FIXED.md
+    - listitem [ref=e311]:
+      - link "SIGNAL_FIX_COMPLETE.md" [ref=e312] [cursor=pointer]:
+        - /url: SIGNAL_FIX_COMPLETE.md
+    - listitem [ref=e313]:
+      - link "SIGNAL_FIXES_FINAL.md" [ref=e314] [cursor=pointer]:
+        - /url: SIGNAL_FIXES_FINAL.md
+    - listitem [ref=e315]:
+      - link "SIMPLE_START.txt" [ref=e316] [cursor=pointer]:
+        - /url: SIMPLE_START.txt
+    - listitem [ref=e317]:
+      - link "SQLALCHEMY_DOCKER_FIX_COMPLETE.md" [ref=e318] [cursor=pointer]:
+        - /url: SQLALCHEMY_DOCKER_FIX_COMPLETE.md
+    - listitem [ref=e319]:
+      - link "start-dev.sh" [ref=e320] [cursor=pointer]:
+        - /url: start-dev.sh
+    - listitem [ref=e321]:
+      - link "start-docker-services.sh" [ref=e322] [cursor=pointer]:
+        - /url: start-docker-services.sh
+    - listitem [ref=e323]:
+      - link "start-services.sh" [ref=e324] [cursor=pointer]:
+        - /url: start-services.sh
+    - listitem [ref=e325]:
+      - link "start-webapp.py" [ref=e326] [cursor=pointer]:
+        - /url: start-webapp.py
+    - listitem [ref=e327]:
+      - link "start-webapp.sh" [ref=e328] [cursor=pointer]:
+        - /url: start-webapp.sh
+    - listitem [ref=e329]:
+      - link "start.sh" [ref=e330] [cursor=pointer]:
+        - /url: start.sh
+    - listitem [ref=e331]:
+      - link "START_HERE.md" [ref=e332] [cursor=pointer]:
+        - /url: START_HERE.md
+    - listitem [ref=e333]:
+      - link "START_HERE_DOCKER.md" [ref=e334] [cursor=pointer]:
+        - /url: START_HERE_DOCKER.md
+    - listitem [ref=e335]:
+      - link "START_HERE_FIRST.md" [ref=e336] [cursor=pointer]:
+        - /url: START_HERE_FIRST.md
+    - listitem [ref=e337]:
+      - link "START_HERE_NOW.md" [ref=e338] [cursor=pointer]:
+        - /url: START_HERE_NOW.md
+    - listitem [ref=e339]:
+      - link "START_NOW.txt" [ref=e340] [cursor=pointer]:
+        - /url: START_NOW.txt
+    - listitem [ref=e341]:
+      - link "START_SCRIPT_FIX_COMPLETE.md" [ref=e342] [cursor=pointer]:
+        - /url: START_SCRIPT_FIX_COMPLETE.md
+    - listitem [ref=e343]:
+      - link "STARTUP_FIXED.txt" [ref=e344] [cursor=pointer]:
+        - /url: STARTUP_FIXED.txt
+    - listitem [ref=e345]:
+      - link "STARTUP_GUIDE.md" [ref=e346] [cursor=pointer]:
+        - /url: STARTUP_GUIDE.md
+    - listitem [ref=e347]:
+      - link "STARTUP_OPTIMIZATION_SUMMARY.md" [ref=e348] [cursor=pointer]:
+        - /url: STARTUP_OPTIMIZATION_SUMMARY.md
+    - listitem [ref=e349]:
+      - link "stop-all.sh" [ref=e350] [cursor=pointer]:
+        - /url: stop-all.sh
+    - listitem [ref=e351]:
+      - link "stop-webapp.sh" [ref=e352] [cursor=pointer]:
+        - /url: stop-webapp.sh
+    - listitem [ref=e353]:
+      - link "STRATEGY_MULTI_SYMBOL_IMPLEMENTATION.md" [ref=e354] [cursor=pointer]:
+        - /url: STRATEGY_MULTI_SYMBOL_IMPLEMENTATION.md
+    - listitem [ref=e355]:
+      - link "SYSTEM_100_PERCENT_COMPLETE.md" [ref=e356] [cursor=pointer]:
+        - /url: SYSTEM_100_PERCENT_COMPLETE.md
+    - listitem [ref=e357]:
+      - link "SYSTEM_READY_SUMMARY.md" [ref=e358] [cursor=pointer]:
+        - /url: SYSTEM_READY_SUMMARY.md
+    - listitem [ref=e359]:
+      - link "tailwind.config.js" [ref=e360] [cursor=pointer]:
+        - /url: tailwind.config.js
+    - listitem [ref=e361]:
+      - link "test-ibkr-gateway.sh" [ref=e362] [cursor=pointer]:
+        - /url: test-ibkr-gateway.sh
+    - listitem [ref=e363]:
+      - link "test-optimizations.py" [ref=e364] [cursor=pointer]:
+        - /url: test-optimizations.py
+    - listitem [ref=e365]:
+      - link "test-services.sh" [ref=e366] [cursor=pointer]:
+        - /url: test-services.sh
+    - listitem [ref=e367]:
+      - link "test_all_fixes.sh" [ref=e368] [cursor=pointer]:
+        - /url: test_all_fixes.sh
+    - listitem [ref=e369]:
+      - link "test_all_fixes_v2.sh" [ref=e370] [cursor=pointer]:
+        - /url: test_all_fixes_v2.sh
+    - listitem [ref=e371]:
+      - link "TEST_AND_DEPLOY_GUIDE.md" [ref=e372] [cursor=pointer]:
+        - /url: TEST_AND_DEPLOY_GUIDE.md
+    - listitem [ref=e373]:
+      - link "test_comprehensive_analysis.sh" [ref=e374] [cursor=pointer]:
+        - /url: test_comprehensive_analysis.sh
+    - listitem [ref=e375]:
+      - link "TEST_DOCKER_START.md" [ref=e376] [cursor=pointer]:
+        - /url: TEST_DOCKER_START.md
+    - listitem [ref=e377]:
+      - link "test_llm_signals.py" [ref=e378] [cursor=pointer]:
+        - /url: test_llm_signals.py
+    - listitem [ref=e379]:
+      - link "test_llm_signals_complete.py" [ref=e380] [cursor=pointer]:
+        - /url: test_llm_signals_complete.py
+    - listitem [ref=e381]:
+      - link "test_minio_fix.sh" [ref=e382] [cursor=pointer]:
+        - /url: test_minio_fix.sh
+    - listitem [ref=e383]:
+      - link "test_placeholder_fix.sh" [ref=e384] [cursor=pointer]:
+        - /url: test_placeholder_fix.sh
+    - listitem [ref=e385]:
+      - link "TEST_SUITE_README.md" [ref=e386] [cursor=pointer]:
+        - /url: TEST_SUITE_README.md
+    - listitem [ref=e387]:
+      - link "test_workflow_system.py" [ref=e388] [cursor=pointer]:
+        - /url: test_workflow_system.py
+    - listitem [ref=e389]:
+      - link "tests/" [ref=e390] [cursor=pointer]:
+        - /url: tests/
+    - listitem [ref=e391]:
+      - link "TROUBLESHOOTING.md" [ref=e392] [cursor=pointer]:
+        - /url: TROUBLESHOOTING.md
+    - listitem [ref=e393]:
+      - link "ULTIMATE_QUICK_START.txt" [ref=e394] [cursor=pointer]:
+        - /url: ULTIMATE_QUICK_START.txt
+    - listitem [ref=e395]:
+      - link "venv/" [ref=e396] [cursor=pointer]:
+        - /url: venv/
+    - listitem [ref=e397]:
+      - link "verify_deployment.sh" [ref=e398] [cursor=pointer]:
+        - /url: verify_deployment.sh
+    - listitem [ref=e399]:
+      - link "wait-for-docker.sh" [ref=e400] [cursor=pointer]:
+        - /url: wait-for-docker.sh
+    - listitem [ref=e401]:
+      - link "webapp/" [ref=e402] [cursor=pointer]:
+        - /url: webapp/
+    - listitem [ref=e403]:
+      - link "WORKFLOW_IMPLEMENTATION_COMPLETE.md" [ref=e404] [cursor=pointer]:
+        - /url: WORKFLOW_IMPLEMENTATION_COMPLETE.md
+    - listitem [ref=e405]:
+      - link "WORKFLOW_IMPLEMENTATION_SUMMARY.md" [ref=e406] [cursor=pointer]:
+        - /url: WORKFLOW_IMPLEMENTATION_SUMMARY.md
+    - listitem [ref=e407]:
+      - link "WORKFLOW_TEST_DOCUMENTATION.md" [ref=e408] [cursor=pointer]:
+        - /url: WORKFLOW_TEST_DOCUMENTATION.md
+    - listitem [ref=e409]:
+      - link "🎉_START_HERE_100_PERCENT_COMPLETE.md" [ref=e410] [cursor=pointer]:
+        - /url: "%F0%9F%8E%89_START_HERE_100_PERCENT_COMPLETE.md"
+  - separator [ref=e411]
+```

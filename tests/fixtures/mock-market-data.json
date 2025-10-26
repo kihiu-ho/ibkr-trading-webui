@@ -1,0 +1,20 @@
+{
+  "AAPL": {
+    "price": 180.5,
+    "change": 2.35,
+    "changePercent": 1.32,
+    "volume": 45000000,
+    "high": 182,
+    "low": 178.25,
+    "open": 179
+  },
+  "TSLA": {
+    "price": 245.8,
+    "change": -3.2,
+    "changePercent": -1.29,
+    "volume": 32000000,
+    "high": 250,
+    "low": 244.5,
+    "open": 248
+  }
+}

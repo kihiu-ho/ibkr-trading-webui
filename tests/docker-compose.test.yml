@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres-test:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: test_trading
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app-test:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres-test:5432/test_trading
+      - IBKR_PAPER_TRADING=true
+      - MOCK_LLM_RESPONSES=true
+      - MOCK_MARKET_DATA=true
+      - LOG_LEVEL=INFO
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    volumes:
+      - ../backend:/app/backend
+      - ../frontend:/app/frontend
+    command: ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  playwright-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      - BASE_URL=http://app-test:8000
+      - IBKR_USERNAME=loginhiuhiu250
+      - IBKR_PASSWORD=qazwsX321
+      - HEADLESS=true
+      - CI=true
+    volumes:
+      - ./test-results:/app/test-results
+      - ./e2e:/app/e2e
+      - ./fixtures:/app/fixtures
+      - ./page-objects:/app/page-objects
+    depends_on:
+      - app-test
+    command: ["npx", "playwright", "test", "--reporter=html"]
+
+volumes:
+  postgres_test_data:

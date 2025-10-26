@@ -1,0 +1,210 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  e2e-tests:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+        shard: [1/4, 2/4, 3/4, 4/4]
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_trading
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 18
+        cache: 'npm'
+        cache-dependency-path: tests/package-lock.json
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Install test dependencies
+      working-directory: tests
+      run: npm ci
+
+    - name: Install Playwright Browsers
+      working-directory: tests
+      run: npx playwright install --with-deps
+
+    - name: Setup test environment
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_trading
+        IBKR_USERNAME: ${{ secrets.IBKR_TEST_USERNAME }}
+        IBKR_PASSWORD: ${{ secrets.IBKR_TEST_PASSWORD }}
+        MOCK_LLM_RESPONSES: true
+        MOCK_MARKET_DATA: true
+      run: |
+        # Setup test database
+        python -c "
+        import os
+        os.environ['DATABASE_URL'] = 'postgresql://postgres:postgres@localhost:5432/test_trading'
+        from backend.core.database import engine
+        from backend.models import Base
+        Base.metadata.create_all(bind=engine)
+        "
+
+    - name: Start application
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_trading
+        IBKR_PAPER_TRADING: true
+      run: |
+        python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
+        sleep 10
+        curl -f http://localhost:8000/api/health || exit 1
+
+    - name: Run Playwright tests
+      working-directory: tests
+      env:
+        BASE_URL: http://localhost:8000
+        IBKR_USERNAME: ${{ secrets.IBKR_TEST_USERNAME }}
+        IBKR_PASSWORD: ${{ secrets.IBKR_TEST_PASSWORD }}
+        CI: true
+      run: |
+        npx playwright test --shard=${{ matrix.shard }} --project=${{ matrix.browser }} --reporter=github
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: playwright-report-${{ matrix.browser }}-${{ matrix.shard }}
+        path: tests/test-results/
+        retention-days: 30
+
+    - name: Upload HTML report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: playwright-html-report-${{ matrix.browser }}-${{ matrix.shard }}
+        path: tests/test-results/html-report/
+        retention-days: 30
+
+  visual-regression:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 18
+        cache: 'npm'
+        cache-dependency-path: tests/package-lock.json
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        cd tests && npm ci
+
+    - name: Install Playwright
+      working-directory: tests
+      run: npx playwright install --with-deps chromium
+
+    - name: Start application
+      env:
+        DATABASE_URL: sqlite:///./test_trading.db
+        MOCK_LLM_RESPONSES: true
+        MOCK_MARKET_DATA: true
+      run: |
+        python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
+        sleep 10
+
+    - name: Run visual regression tests
+      working-directory: tests
+      env:
+        BASE_URL: http://localhost:8000
+        UPDATE_SNAPSHOTS: false
+      run: npx playwright test --grep="@visual" --project=chromium
+
+    - name: Upload visual diff artifacts
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: visual-regression-diffs
+        path: tests/test-results/
+        retention-days: 7
+
+  merge-reports:
+    if: always()
+    needs: [e2e-tests]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 18
+
+    - name: Install dependencies
+      working-directory: tests
+      run: npm ci
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: all-test-results
+
+    - name: Merge test reports
+      working-directory: tests
+      run: |
+        npx playwright merge-reports --reporter html ../all-test-results/playwright-report-*
+
+    - name: Upload merged HTML report
+      uses: actions/upload-artifact@v4
+      with:
+        name: merged-playwright-report
+        path: tests/playwright-report/
+        retention-days: 30
+
+    - name: Publish test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Playwright Test Results
+        path: 'all-test-results/*/results.json'
+        reporter: 'java-junit'
+        fail-on-error: true

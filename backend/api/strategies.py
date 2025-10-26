@@ -133,21 +133,38 @@ async def delete_strategy(strategy_id: int, db: Session = Depends(get_db)):
     return {"message": "Strategy deleted successfully"}
 
 
+@router.get("/{strategy_id}/executions")
+async def get_strategy_executions(strategy_id: int, db: Session = Depends(get_db)):
+    """Get workflow executions for a specific strategy."""
+    try:
+        from backend.models.workflow import WorkflowExecution
+
+        executions = db.query(WorkflowExecution).filter(
+            WorkflowExecution.strategy_id == strategy_id
+        ).order_by(WorkflowExecution.started_at.desc()).all()
+
+        return [execution.to_dict() for execution in executions]
+
+    except Exception as e:
+        logger.error(f"Error fetching strategy executions: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch strategy executions")
+
+
 @router.post("/{strategy_id}/execute")
 async def execute_strategy(strategy_id: int, db: Session = Depends(get_db)):
     """Execute trading workflow for a strategy."""
     strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
-    
+
     if not strategy.active:
         raise HTTPException(status_code=400, detail="Strategy is not active")
-    
+
     # Trigger Celery task
     task = execute_trading_workflow.delay(strategy_id)
-    
+
     logger.info(f"Workflow execution triggered for strategy {strategy_id}, task_id: {task.id}")
-    
+
     return {
         "message": "Workflow execution started",
         "strategy_id": strategy_id,

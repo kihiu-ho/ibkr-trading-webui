@@ -1,7 +1,8 @@
 """IBKR Gateway authentication endpoints."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from backend.services.ibkr_service import IBKRService
 from backend.config.settings import settings
+from pydantic import BaseModel
 import logging
 
 logger = logging.getLogger(__name__)
@@ -9,27 +10,29 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+class AutoLoginRequest(BaseModel):
+    username: str
+    password: str
+    trading_mode: str = "paper"
+
+
 @router.get("/status")
 async def get_auth_status():
     """
     Get IBKR Gateway authentication status.
-    
+
     Returns connection status, authenticated account, and server info.
     """
     try:
         ibkr = IBKRService()
-        
-        # Check auth status
-        try:
-            auth_response = await ibkr.check_auth_status()
-            authenticated = auth_response.get('authenticated', False)
-        except Exception:
-            authenticated = False
-        
+
+        # Use enhanced gateway connection check
+        connection_status = await ibkr.check_gateway_connection()
+
         # Get accounts if authenticated
         account_id = None
         accounts = []
-        if authenticated:
+        if connection_status.get('authenticated', False):
             try:
                 accounts_list = await ibkr.get_accounts()
                 if accounts_list:
@@ -37,41 +40,23 @@ async def get_auth_status():
                     account_id = settings.IBKR_ACCOUNT_ID or (accounts[0] if accounts else None)
             except Exception as e:
                 logger.warning(f"Failed to fetch accounts: {e}")
-        
-        # Get server status via tickle
-        server_online = False
-        server_error = None
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0, verify=False) as client:
-                tickle_response = await client.get(f"{settings.IBKR_API_BASE_URL}/v1/api/tickle")
-                server_online = tickle_response.status_code == 200
-                if server_online:
-                    tickle_data = tickle_response.json()
-                    # Check if authenticated from tickle response
-                    if tickle_data.get('iserver', {}).get('authStatus', {}).get('authenticated'):
-                        authenticated = True
-        except httpx.ConnectError:
-            server_error = "Cannot connect to IBKR Gateway. Is it running?"
-        except httpx.TimeoutException:
-            server_error = "Connection to IBKR Gateway timed out"
-        except Exception as e:
-            server_error = f"Gateway connection error: {str(e)}"
-            logger.warning(f"Gateway status check failed: {e}")
-        
+
         result = {
-            "authenticated": authenticated,
+            "authenticated": connection_status.get('authenticated', False),
             "account_id": account_id,
             "accounts": accounts,
-            "server_online": server_online,
-            "gateway_url": settings.IBKR_API_BASE_URL
+            "server_online": connection_status.get('server_online', False),
+            "connected": connection_status.get('connected', False),
+            "competing": connection_status.get('competing', False),
+            "gateway_url": connection_status.get('gateway_url', settings.IBKR_API_BASE_URL),
+            "message": connection_status.get('message', '')
         }
-        
-        if server_error:
-            result["server_error"] = server_error
-        
+
+        if connection_status.get('error'):
+            result["server_error"] = connection_status['error']
+
         return result
-    
+
     except Exception as e:
         logger.error(f"Failed to get auth status: {str(e)}")
         return {
@@ -79,6 +64,7 @@ async def get_auth_status():
             "account_id": None,
             "accounts": [],
             "server_online": False,
+            "connected": False,
             "gateway_url": settings.IBKR_API_BASE_URL,
             "error": str(e),
             "server_error": "Failed to check gateway status"
@@ -110,27 +96,58 @@ async def initiate_login():
         raise HTTPException(status_code=500, detail=f"Authentication failed: {str(e)}")
 
 
+@router.post("/auto-login")
+async def automated_login(request: AutoLoginRequest):
+    """
+    Perform automated login to IBKR Gateway with credentials.
+
+    This endpoint handles the complete login flow including:
+    - Navigation to IBKR login endpoint
+    - Paper Trading mode selection
+    - Credential submission
+    - Session management
+    """
+    try:
+        ibkr = IBKRService()
+
+        # Perform automated login
+        result = await ibkr.automated_login(
+            username=request.username,
+            password=request.password,
+            trading_mode=request.trading_mode
+        )
+
+        if result.get("success"):
+            return result
+        else:
+            raise HTTPException(status_code=400, detail=result.get("message", "Login failed"))
+
+    except Exception as e:
+        logger.error(f"Automated login failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Automated login failed: {str(e)}")
+
+
 @router.post("/logout")
 async def logout():
     """
     Logout from IBKR Gateway.
-    
+
     Note: This may require IBKR Gateway restart for full logout.
     """
     try:
         ibkr = IBKRService()
-        
+
         # IBKR Gateway doesn't have a direct logout endpoint
         # The session is managed by the gateway itself
         # We'll just verify the current state
-        
+
         logger.info("Logout requested - IBKR Gateway session is managed by the gateway")
-        
+
         return {
             "success": True,
             "message": "To fully logout, restart IBKR Gateway or use the gateway UI"
         }
-    
+
     except Exception as e:
         logger.error(f"Logout failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Logout failed: {str(e)}")
@@ -157,19 +174,67 @@ async def get_accounts():
         raise HTTPException(status_code=500, detail=f"Failed to fetch accounts: {str(e)}")
 
 
+@router.get("/login/callback")
+async def login_callback(request: Request):
+    """
+    Handle redirect callback from IBKR Gateway after authentication.
+
+    This endpoint receives the redirect from the IBKR Gateway after successful
+    authentication and verifies the session status.
+    """
+    try:
+        ibkr = IBKRService()
+
+        # Check authentication status after redirect
+        connection_status = await ibkr.check_gateway_connection()
+
+        if connection_status.get('authenticated', False):
+            # Get account information
+            accounts = []
+            try:
+                accounts = await ibkr.get_accounts()
+            except Exception as e:
+                logger.warning(f"Failed to fetch accounts after login: {e}")
+
+            return {
+                "success": True,
+                "message": "Authentication successful",
+                "authenticated": True,
+                "accounts": accounts,
+                "account_id": accounts[0] if accounts else None,
+                "redirect_url": "http://localhost:8000/ibkr/login"
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Authentication not completed",
+                "authenticated": False,
+                "error": connection_status.get('error', 'Unknown authentication error')
+            }
+
+    except Exception as e:
+        logger.error(f"Login callback failed: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Login callback failed: {str(e)}",
+            "authenticated": False,
+            "error": str(e)
+        }
+
+
 @router.get("/health")
 async def check_gateway_health():
     """
     Check IBKR Gateway health via tickle endpoint.
-    
+
     This endpoint should be called periodically to monitor connection health.
     """
     try:
         import httpx
-        
+
         async with httpx.AsyncClient(timeout=5.0, verify=False) as client:
             response = await client.get(f"{settings.IBKR_API_BASE_URL}/v1/api/tickle")
-            
+
             if response.status_code == 200:
                 data = response.json()
                 return {
@@ -183,7 +248,7 @@ async def check_gateway_health():
                     "session_active": False,
                     "error": f"Tickle returned status {response.status_code}"
                 }
-    
+
     except Exception as e:
         logger.warning(f"Gateway health check failed: {str(e)}")
         return {
