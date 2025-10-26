@@ -12,7 +12,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ibkr-gateway
+    image: ibkr-gateway:latest
     container_name: ibkr-gateway
     environment:
       IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
@@ -75,7 +75,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
-    image: ibkr-backend
+    image: ibkr-backend:latest
     container_name: ibkr-backend
     environment:
       DATABASE_URL: "${DATABASE_URL}"
@@ -118,7 +118,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
-    image: ibkr-backend
+    image: ibkr-backend:latest
     container_name: ibkr-celery-worker
     environment:
       DATABASE_URL: "${DATABASE_URL}"
@@ -155,7 +155,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
-    image: ibkr-backend
+    image: ibkr-backend:latest
     container_name: ibkr-celery-beat
     environment:
       DATABASE_URL: "${DATABASE_URL}"
@@ -178,7 +178,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
-    image: ibkr-backend
+    image: ibkr-backend:latest
     container_name: ibkr-flower
     environment:
       CELERY_BROKER_URL: "redis://redis:6379/0"

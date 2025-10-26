@@ -11,6 +11,10 @@
 # 2. Run deployment script
 ./deploy_prompt_system.sh
 
+# ⚠️ NOTE: If you changed .env variables, reload containers first:
+# ./reload-env.sh
+# Then run deployment script
+
 # Output:
 # Loading environment variables from .env file...
 # ✓ Environment variables loaded
@@ -197,7 +201,18 @@ curl "http://localhost:8000/api/v1/prompts/compare?prompt_id_1=1&prompt_id_2=4" 
 ```bash
 echo $DATABASE_URL
 # Should output: postgresql://...
+
+# If you recently updated .env, reload containers:
+./reload-env.sh
 ```
+
+### **Problem: Environment variables not updating after .env changes**
+**Solution**: Containers cache environment variables. Reload them:
+```bash
+./reload-env.sh
+# This recreates containers with new environment
+```
+See `ENV_RELOAD_GUIDE.md` and `TROUBLESHOOTING.md` (Issue 11) for details.
 
 ### **Problem: Monaco Editor doesn't load**
 **Solution**: Check browser console for errors. Monaco loads from CDN.

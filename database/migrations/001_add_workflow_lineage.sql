@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS workflow_lineage (
     step_number INTEGER NOT NULL,
     input_data JSONB NOT NULL,
     output_data JSONB NOT NULL,
-    metadata JSONB,
+    step_metadata JSONB,  -- Renamed from 'metadata' to avoid SQLAlchemy reserved name
     error TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'success',  -- success, error
     duration_ms INTEGER,

@@ -26,7 +26,7 @@ def check_and_execute_strategies():
         service = StrategyService(db)
         
         # Get strategies due for execution (5 minute tolerance)
-        due_strategies = await service.get_strategies_due_for_execution(tolerance_minutes=5)
+        due_strategies = service.get_strategies_due_for_execution(tolerance_minutes=5)
         
         if not due_strategies:
             logger.debug("No strategies due for execution")
@@ -100,7 +100,7 @@ def execute_strategy(self, strategy_id: int):
     
     try:
         service = StrategyService(db)
-        strategy = await service.get_strategy(strategy_id)
+        strategy = service.get_strategy(strategy_id)
         
         if not strategy:
             logger.error(f"Strategy {strategy_id} not found")
@@ -113,7 +113,7 @@ def execute_strategy(self, strategy_id: int):
         logger.info(f"Executing strategy: {strategy.name} (ID: {strategy_id}, execution_id: {execution_id})")
         
         # Validation
-        validation = await service.validate_strategy_config(strategy)
+        validation = service.validate_strategy_config(strategy)
         if not validation['valid']:
             logger.error(f"Strategy {strategy.name} validation failed: {validation['issues']}")
             return {
@@ -125,10 +125,10 @@ def execute_strategy(self, strategy_id: int):
         from backend.services.strategy_executor import StrategyExecutor
         
         executor = StrategyExecutor(db)
-        result = await executor.execute_strategy(strategy, execution_id)
+        result = executor.execute_strategy(strategy, execution_id)
         
         # Mark strategy as executed
-        await service.mark_strategy_executed(strategy_id)
+        service.mark_strategy_executed(strategy_id)
         
         logger.info(f"Strategy {strategy.name} executed successfully: {result}")
         return result
@@ -137,7 +137,7 @@ def execute_strategy(self, strategy_id: int):
         # StrategyExecutor not yet implemented - log and skip
         logger.warning(f"StrategyExecutor not yet implemented, marking strategy {strategy_id} as executed")
         service = StrategyService(db)
-        await service.mark_strategy_executed(strategy_id)
+        service.mark_strategy_executed(strategy_id)
         return {
             "execution_id": execution_id,
             "status": "skipped",
@@ -169,7 +169,7 @@ def recalculate_strategy_schedules():
     db = SessionLocal()
     try:
         service = StrategyService(db)
-        strategies = await service.list_strategies(active_only=True)
+        strategies = service.list_strategies(active_only=True)
         
         updated = 0
         errors = []

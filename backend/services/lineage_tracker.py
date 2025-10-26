@@ -169,9 +169,9 @@ class LineageTracker:
         query = db.query(LineageRecord).distinct(LineageRecord.execution_id)
         
         if strategy_id:
-            # Filter by strategy_id in metadata
+            # Filter by strategy_id in step_metadata
             query = query.filter(
-                LineageRecord.metadata['strategy_id'].astext == str(strategy_id)
+                LineageRecord.step_metadata['strategy_id'].astext == str(strategy_id)
             )
         
         # Order by most recent first
@@ -190,7 +190,7 @@ class LineageTracker:
             
             executions.append({
                 "execution_id": record.execution_id,
-                "strategy_id": record.metadata.get("strategy_id") if record.metadata else None,
+                "strategy_id": record.step_metadata.get("strategy_id") if record.step_metadata else None,
                 "executed_at": record.recorded_at.isoformat(),
                 "status": status,
                 "step_count": len(exec_records)
@@ -231,7 +231,7 @@ class LineageTracker:
         
         if strategy_id:
             query = query.filter(
-                LineageRecord.metadata['strategy_id'].astext == str(strategy_id)
+                LineageRecord.step_metadata['strategy_id'].astext == str(strategy_id)
             )
         
         records = query.all()

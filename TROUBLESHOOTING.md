@@ -274,6 +274,52 @@ lsof -i :6379
 
 ---
 
+## Issue 11: Environment Variables Not Loading After `.env` Changes
+
+**Symptoms**:
+- Changed `DATABASE_URL` or other variables in `.env`
+- Services still use old values
+- Backend shows errors like: `Got: your_database_url`
+
+**Root Cause**: Docker Compose caches environment variables. Running `docker-compose restart` doesn't reload `.env` changes.
+
+**Solution**: Use the reload script to properly recreate containers:
+
+```bash
+# Quick reload after .env changes
+./reload-env.sh
+```
+
+**Manual Steps** (if script not available):
+```bash
+# Stop containers (but keep volumes/network)
+docker-compose down
+
+# Recreate containers with new environment
+docker-compose up -d
+
+# Verify new values loaded
+docker-compose exec backend printenv DATABASE_URL
+```
+
+**When to Reload**:
+- ✅ After changing `DATABASE_URL`
+- ✅ After updating `OPENAI_API_KEY`
+- ✅ After modifying any variable in `.env`
+- ❌ After code changes (just restart: `docker-compose restart`)
+
+**Verification**:
+```bash
+# Check environment variable inside container
+docker-compose exec backend printenv DATABASE_URL
+
+# Should match your .env file (not cached values)
+```
+
+**See Also**: `ENV_RELOAD_GUIDE.md` for detailed documentation
+
+---
+
 ## Complete Clean Restart
 
 If all else fails:

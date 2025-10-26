@@ -128,15 +128,15 @@ class StrategyService:
         logger.info(f"Updated strategy: {strategy.name} (ID: {strategy_id})")
         return strategy
     
-    async def get_strategy(self, strategy_id: int) -> Optional[Strategy]:
+    def get_strategy(self, strategy_id: int) -> Optional[Strategy]:
         """Get strategy by ID."""
         return self.db.query(Strategy).filter(Strategy.id == strategy_id).first()
     
-    async def get_strategy_by_name(self, name: str) -> Optional[Strategy]:
+    def get_strategy_by_name(self, name: str) -> Optional[Strategy]:
         """Get strategy by name."""
         return self.db.query(Strategy).filter(Strategy.name == name).first()
     
-    async def list_strategies(
+    def list_strategies(
         self,
         active_only: bool = False,
         symbol_conid: Optional[int] = None,
@@ -219,7 +219,7 @@ class StrategyService:
         logger.info(f"Deactivated strategy: {strategy.name}")
         return strategy
     
-    async def get_strategies_due_for_execution(
+    def get_strategies_due_for_execution(
         self,
         tolerance_minutes: int = 5
     ) -> List[Strategy]:
@@ -246,7 +246,7 @@ class StrategyService:
         logger.debug(f"Found {len(strategies)} strategies due for execution")
         return strategies
     
-    async def mark_strategy_executed(
+    def mark_strategy_executed(
         self,
         strategy_id: int,
         execution_time: Optional[datetime] = None
@@ -261,7 +261,7 @@ class StrategyService:
         Returns:
             Updated Strategy object
         """
-        strategy = await self.get_strategy(strategy_id)
+        strategy = self.get_strategy(strategy_id)
         if not strategy:
             raise ValueError(f"Strategy {strategy_id} not found")
         
@@ -284,7 +284,7 @@ class StrategyService:
         )
         return strategy
     
-    async def validate_strategy_config(
+    def validate_strategy_config(
         self,
         strategy: Strategy
     ) -> Dict[str, Any]:

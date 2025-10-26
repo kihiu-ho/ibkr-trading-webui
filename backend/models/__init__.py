@@ -11,6 +11,8 @@ from backend.models.trading_signal import TradingSignal
 from backend.models.prompt import PromptTemplate, PromptPerformance
 from backend.models.lineage import LineageRecord
 from backend.models.symbol import Symbol
+from backend.models.decision import Decision
+from backend.models.workflow import WorkflowExecution
 
 __all__ = [
     "Base",
@@ -30,5 +32,7 @@ __all__ = [
     "PromptPerformance",
     "LineageRecord",
     "Symbol",
+    "Decision",
+    "WorkflowExecution",
 ]
 

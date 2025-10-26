@@ -2,7 +2,7 @@
 Workflow Lineage Models
 Tracks input/output of each step in workflow execution
 """
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSONB
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON
 from sqlalchemy.sql import func
 from backend.core.database import Base
 
@@ -15,9 +15,9 @@ class LineageRecord(Base):
     execution_id = Column(String(255), nullable=False, index=True)
     step_name = Column(String(100), nullable=False, index=True)
     step_number = Column(Integer, nullable=False)
-    input_data = Column(JSONB, nullable=False)
-    output_data = Column(JSONB, nullable=False)
-    metadata = Column(JSONB)
+    input_data = Column(JSON, nullable=False)
+    output_data = Column(JSON, nullable=False)
+    step_metadata = Column(JSON)  # Renamed from 'metadata' to avoid SQLAlchemy reserved name
     error = Column(Text)
     status = Column(String(20), nullable=False, default='success', index=True)  # success, error
     duration_ms = Column(Integer)
@@ -32,7 +32,7 @@ class LineageRecord(Base):
             "step_number": self.step_number,
             "input_data": self.input_data,
             "output_data": self.output_data,
-            "metadata": self.metadata,
+            "metadata": self.step_metadata,  # Return as 'metadata' for API compatibility
             "error": self.error,
             "status": self.status,
             "duration_ms": self.duration_ms,

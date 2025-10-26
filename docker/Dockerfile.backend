@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies including Chromium for Kaleido/Plotly
+# Layer 1: System dependencies (rarely changes - cached)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
@@ -16,14 +16,16 @@ RUN apt-get update && apt-get install -y \
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMIUM_PATH=/usr/bin/chromium
 
-# Copy requirements
+# Layer 2: Install uv (rarely changes - cached)
+# uv is 10-100x faster than pip for package installation
+RUN pip install --no-cache-dir uv
+
+# Layer 3: Python dependencies (changes occasionally - cached unless requirements.txt changes)
 COPY backend/requirements.txt /app/backend/requirements.txt
+RUN uv pip install --system --no-cache -r /app/backend/requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /app/backend/requirements.txt
-
-# Copy application code
+# Layer 4: Application code (changes frequently - NOT cached)
+# This layer is rebuilt when code changes, but Layers 1-3 remain cached
 COPY backend /app/backend
 COPY frontend /app/frontend
 

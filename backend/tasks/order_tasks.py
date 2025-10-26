@@ -25,7 +25,7 @@ def monitor_active_orders():
     db = SessionLocal()
     try:
         manager = OrderManager(db)
-        result = await manager.monitor_active_orders()
+        result = manager.monitor_active_orders()
         
         logger.info(
             f"Order monitoring complete: {result['updated']} orders updated, "
@@ -128,7 +128,7 @@ def retry_failed_orders():
                 order.error_message = None
                 db.commit()
                 
-                await manager.submit_order(order)
+                manager.submit_order(order)
                 retried += 1
             except Exception as e:
                 errors.append({

@@ -62,6 +62,8 @@ class Strategy(Base):
     signals = relationship("TradingSignal", back_populates="strategy")
     prompt_templates = relationship("PromptTemplate", back_populates="strategy")
     prompt_performances = relationship("PromptPerformance", back_populates="strategy")
+    decisions = relationship("Decision", back_populates="strategy")
+    workflow_executions = relationship("WorkflowExecution", back_populates="strategy")
     
     def to_dict(self):
         """Convert strategy to dictionary for API responses."""

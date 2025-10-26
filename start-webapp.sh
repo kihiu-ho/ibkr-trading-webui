@@ -5,9 +5,24 @@
 
 set -e  # Exit on error
 
+# Enable Docker BuildKit for faster builds (10-100x faster than legacy builder)
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+export BUILDKIT_PROGRESS=plain
+
+# Use BuildKit builder (avoid slow OCI tarball export)
+# Switch to existing fast builder if available
+if docker buildx ls | grep -q "multiplatform.*running"; then
+    docker buildx use multiplatform 2>/dev/null || true
+fi
+
 # Configuration
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$PROJECT_ROOT/logs"
+
+# Command-line flags
+FORCE_REBUILD=false
+SKIP_HEALTH_CHECKS=false
 
 # Colors for output
 RED='\033[0;31m'
@@ -17,11 +32,64 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+# Parse command-line arguments
+show_help() {
+    echo "Usage: ./start-webapp.sh [OPTIONS]"
+    echo ""
+    echo "Optimized Docker Compose startup for IBKR Trading WebUI"
+    echo ""
+    echo "Options:"
+    echo "  --rebuild   Force rebuild of all Docker images (use after dependency changes)"
+    echo "  --fast      Skip health checks for faster startup (expert mode)"
+    echo "  --help      Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  ./start-webapp.sh              # Normal startup (fast after first run, ~8s)"
+    echo "  ./start-webapp.sh --rebuild    # Rebuild images (after requirements.txt changes, ~90s)"
+    echo "  ./start-webapp.sh --fast       # Quick restart, skip health checks (~5s)"
+    echo ""
+    echo "Performance:"
+    echo "  First run:       ~150s (one-time image build with uv)"
+    echo "  Subsequent runs: ~8s   (uses cached images)"
+    echo "  With --rebuild:  ~90s  (optimized rebuild with layer caching)"
+    echo ""
+}
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --rebuild)
+            FORCE_REBUILD=true
+            shift
+            ;;
+        --fast)
+            SKIP_HEALTH_CHECKS=true
+            shift
+            ;;
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo ""
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
 # Create logs directory
 mkdir -p "$LOG_DIR"
 
 echo -e "${BLUE}=============================================="
 echo "IBKR Trading WebUI - Docker Startup"
+if [ "$FORCE_REBUILD" = true ]; then
+    echo "(Rebuild Mode - Full Image Rebuild)"
+elif [ "$SKIP_HEALTH_CHECKS" = true ]; then
+    echo "(Fast Mode - Health Checks Skipped)"
+else
+    echo "(Smart Mode - Build Only When Needed)"
+fi
 echo "==============================================${NC}"
 echo ""
 
@@ -44,6 +112,19 @@ print_header() {
     echo -e "${CYAN}$1${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
+}
+
+# Function to detect if Docker images exist
+detect_images() {
+    local images=("ibkr-backend:latest" "ibkr-gateway:latest")
+    
+    for image in "${images[@]}"; do
+        if ! docker image inspect "$image" &> /dev/null 2>&1; then
+            return 1  # Image doesn't exist, need to build
+        fi
+    done
+    
+    return 0  # All images exist
 }
 
 # Check if Docker is installed
@@ -124,15 +205,16 @@ fi
 
 echo ""
 print_status "Docker daemon is ready"
+print_info "Using Docker compose command: $COMPOSE_CMD"
+COMPOSE_BUILD_CMD="$COMPOSE_CMD"
 
 # Determine docker-compose command
-if command -v docker-compose &> /dev/null; then
-    COMPOSE_CMD="docker-compose"
-elif docker compose version &> /dev/null 2>&1; then
+if docker compose version &> /dev/null 2>&1; then
     COMPOSE_CMD="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
 else
-    print_error "docker-compose command not found"
-    echo "Please install Docker Compose v2"
+    print_error "No Docker Compose command found (docker compose or docker-compose)"
     exit 1
 fi
 
@@ -155,115 +237,182 @@ for image in "${IMAGES[@]}"; do
     fi
 done
 
-# Start services
-print_header "Starting All Services"
+# Build images if needed
+print_header "Preparing Docker Images"
 
 cd "$PROJECT_ROOT"
 
-print_info "Starting services with Docker Compose..."
-echo ""
+NEED_BUILD=false
+if ! detect_images; then
+    NEED_BUILD=true
+    print_info "Docker images not found (first run)"
+elif [ "$FORCE_REBUILD" = true ]; then
+    NEED_BUILD=true
+    print_info "Force rebuild requested (--rebuild flag)"
+else
+    print_status "Using cached Docker images"
+    print_info "Use --rebuild flag to force rebuild after dependency changes"
+fi
+
+if [ "$NEED_BUILD" = true ]; then
+    echo ""
+    print_header "Building Docker Images"
+    
+    if [ "$FORCE_REBUILD" = true ]; then
+        print_info "Building all images with uv (10-100x faster than pip)..."
+    else
+        print_info "First-time build with uv (10-100x faster than pip)..."
+    fi
+    print_info "This may take 1-2 minutes (one-time cost)..."
+    echo ""
+    
+    START_BUILD=$(date +%s)
+    
+    # Build backend image directly (avoid Compose's slow build path)
+    print_info "Building backend image (ibkr-backend:latest)..."
+    docker build -f docker/Dockerfile.backend -t ibkr-backend:latest .
+    
+    # Build gateway image directly
+    print_info "Building gateway image (ibkr-gateway:latest)..."
+    docker build -f Dockerfile -t ibkr-gateway:latest .
+    
+    END_BUILD=$(date +%s)
+    BUILD_TIME=$((END_BUILD - START_BUILD))
+    
+    echo ""
+    print_status "Images built successfully in ${BUILD_TIME}s"
+    echo ""
+fi
 
 # Start services
-$COMPOSE_CMD up -d --build
+print_header "Starting All Services"
+
+print_info "Starting Docker Compose services..."
+echo ""
+
+START_UP=$(date +%s)
+$COMPOSE_CMD up -d
+END_UP=$(date +%s)
+STARTUP_TIME=$((END_UP - START_UP))
 
 echo ""
-print_status "Docker Compose started successfully"
+print_status "Services started in ${STARTUP_TIME}s"
 
-# Wait for services to be healthy
-print_header "Waiting for Services to be Ready"
-
-# Wait for PostgreSQL
-print_info "Checking PostgreSQL..."
-POSTGRES_READY=false
-for i in {1..30}; do
-    if docker exec ibkr-postgres pg_isready -U postgres &> /dev/null 2>&1; then
-        print_status "PostgreSQL is ready"
-        POSTGRES_READY=true
-        break
-    fi
-    sleep 1
-done
-
-if [ "$POSTGRES_READY" = false ]; then
-    print_error "PostgreSQL failed to start within 30 seconds"
+# Wait for services to be healthy (unless --fast flag is used)
+if [ "$SKIP_HEALTH_CHECKS" = true ]; then
+    print_header "Health Checks Skipped (Fast Mode)"
+    print_info "Services are starting in background"
+    print_info "Use 'docker-compose ps' to check status"
     echo ""
-    echo "Showing PostgreSQL logs:"
-    docker logs ibkr-postgres --tail 50
-    exit 1
+else
+    print_header "Waiting for Services to be Ready"
 fi
 
-# Wait for Redis
-print_info "Checking Redis..."
-REDIS_READY=false
-for i in {1..30}; do
-    if docker exec ibkr-redis redis-cli ping &> /dev/null 2>&1; then
-        print_status "Redis is ready"
-        REDIS_READY=true
-        break
-    fi
-    sleep 1
-done
+# Skip health checks if fast mode
+if [ "$SKIP_HEALTH_CHECKS" = false ]; then
+    # Wait for PostgreSQL (skip if using external database)
+    if docker ps --format '{{.Names}}' | grep -q "ibkr-postgres"; then
+        print_info "Checking PostgreSQL..."
+        POSTGRES_READY=false
+        for i in {1..30}; do
+            if docker exec ibkr-postgres pg_isready -U postgres &> /dev/null 2>&1; then
+                print_status "PostgreSQL is ready"
+                POSTGRES_READY=true
+                break
+            fi
+            sleep 1
+        done
 
-if [ "$REDIS_READY" = false ]; then
-    print_error "Redis failed to start within 30 seconds"
+        if [ "$POSTGRES_READY" = false ]; then
+            print_error "PostgreSQL failed to start within 30 seconds"
+            echo ""
+            echo "Showing PostgreSQL logs:"
+            docker logs ibkr-postgres --tail 50
+            exit 1
+        fi
+    fi
+fi
+
+if [ "$SKIP_HEALTH_CHECKS" = false ]; then
+    # Wait for Redis
+    print_info "Checking Redis..."
+    REDIS_READY=false
+    for i in {1..30}; do
+        if docker exec ibkr-redis redis-cli ping &> /dev/null 2>&1; then
+            print_status "Redis is ready"
+            REDIS_READY=true
+            break
+        fi
+        sleep 1
+    done
+
+    if [ "$REDIS_READY" = false ]; then
+        print_error "Redis failed to start within 30 seconds"
+        echo ""
+        echo "Showing Redis logs:"
+        docker logs ibkr-redis --tail 50
+        exit 1
+    fi
+fi
+
+if [ "$SKIP_HEALTH_CHECKS" = false ]; then
+    # Wait for MinIO
+    print_info "Checking MinIO..."
+    MINIO_READY=false
+    for i in {1..30}; do
+        if docker exec ibkr-minio curl -f http://localhost:9000/minio/health/live &> /dev/null 2>&1; then
+            print_status "MinIO is ready"
+            MINIO_READY=true
+            break
+        fi
+        sleep 1
+    done
+
+    if [ "$MINIO_READY" = false ]; then
+        print_info "MinIO health check timeout (may still be starting)"
+    fi
+fi
+
+if [ "$SKIP_HEALTH_CHECKS" = false ]; then
+    # Wait for IBKR Gateway (may take longer to start)
+    print_info "Checking IBKR Gateway (may take 60-90 seconds)..."
+    IBKR_READY=false
+    for i in {1..60}; do
+        if docker exec ibkr-gateway curl -k -f https://localhost:5055/v1/api/tickle &> /dev/null 2>&1; then
+            print_status "IBKR Gateway is ready"
+            IBKR_READY=true
+            break
+        fi
+        if [ $((i % 10)) -eq 0 ]; then
+            printf "."
+        fi
+        sleep 1
+    done
+
     echo ""
-    echo "Showing Redis logs:"
-    docker logs ibkr-redis --tail 50
-    exit 1
+    if [ "$IBKR_READY" = false ]; then
+        print_info "IBKR Gateway may still be initializing (takes 1-2 minutes)"
+        print_info "Check logs: docker logs ibkr-gateway"
+    fi
 fi
 
-# Wait for MinIO
-print_info "Checking MinIO..."
-MINIO_READY=false
-for i in {1..30}; do
-    if docker exec ibkr-minio curl -f http://localhost:9000/minio/health/live &> /dev/null 2>&1; then
-        print_status "MinIO is ready"
-        MINIO_READY=true
-        break
+if [ "$SKIP_HEALTH_CHECKS" = false ]; then
+    # Wait for Backend
+    print_info "Checking Backend..."
+    BACKEND_READY=false
+    for i in {1..30}; do
+        if curl -f http://localhost:8000/health &> /dev/null 2>&1; then
+            print_status "Backend is ready"
+            BACKEND_READY=true
+            break
+        fi
+        sleep 1
+    done
+
+    if [ "$BACKEND_READY" = false ]; then
+        print_info "Backend may still be starting"
+        print_info "Check logs: docker logs ibkr-backend"
     fi
-    sleep 1
-done
-
-if [ "$MINIO_READY" = false ]; then
-    print_info "MinIO health check timeout (may still be starting)"
-fi
-
-# Wait for IBKR Gateway (may take longer to start)
-print_info "Checking IBKR Gateway (may take 60-90 seconds)..."
-IBKR_READY=false
-for i in {1..60}; do
-    if docker exec ibkr-gateway curl -k -f https://localhost:5055/v1/api/tickle &> /dev/null 2>&1; then
-        print_status "IBKR Gateway is ready"
-        IBKR_READY=true
-        break
-    fi
-    if [ $((i % 10)) -eq 0 ]; then
-        printf "."
-    fi
-    sleep 1
-done
-
-echo ""
-if [ "$IBKR_READY" = false ]; then
-    print_info "IBKR Gateway may still be initializing (takes 1-2 minutes)"
-    print_info "Check logs: docker logs ibkr-gateway"
-fi
-
-# Wait for Backend
-print_info "Checking Backend..."
-BACKEND_READY=false
-for i in {1..30}; do
-    if curl -f http://localhost:8000/health &> /dev/null 2>&1; then
-        print_status "Backend is ready"
-        BACKEND_READY=true
-        break
-    fi
-    sleep 1
-done
-
-if [ "$BACKEND_READY" = false ]; then
-    print_info "Backend may still be starting"
-    print_info "Check logs: docker logs ibkr-backend"
 fi
 
 # Run database migrations

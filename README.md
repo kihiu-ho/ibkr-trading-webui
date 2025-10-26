@@ -49,3 +49,49 @@ docker-compose up
 ```
 docker exec -it ibkr bash
 ```
+
+## Common Commands
+
+### Environment Variables
+```bash
+# Reload environment after .env changes
+./reload-env.sh
+
+# Verify environment variables in container
+docker-compose exec backend printenv DATABASE_URL
+```
+
+### Service Management
+```bash
+# Start services (fast mode, no rebuild)
+./start-webapp.sh
+
+# Rebuild images after requirements.txt changes
+./start-webapp.sh --rebuild
+
+# Quick restart without health checks
+./start-webapp.sh --fast
+
+# Stop all services
+docker-compose down
+```
+
+### Health Checks
+```bash
+# Check all services status
+docker-compose ps
+
+# Backend health
+curl http://localhost:8000/health
+
+# View logs
+docker-compose logs -f backend
+docker-compose logs -f celery-worker
+```
+
+### Troubleshooting
+See `TROUBLESHOOTING.md` for detailed solutions to common issues, including:
+- Environment variable reloading (Issue 11)
+- Database connection issues
+- Service startup failures
+- And more...
