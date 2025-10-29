@@ -86,71 +86,6 @@
         </div>
     </div>
 
-    <!-- Automated Login Form -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Automated Login</h2>
-
-        <form @submit.prevent="automatedLogin()" class="space-y-4">
-            <div>
-                <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    IBKR Username
-                </label>
-                <input
-                    type="text"
-                    id="username"
-                    x-model="credentials.username"
-                    :disabled="status.authenticated || autoLoggingIn"
-                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50"
-                    placeholder="Enter your IBKR username"
-                    required
-                />
-            </div>
-
-            <div>
-                <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    IBKR Password
-                </label>
-                <input
-                    type="password"
-                    id="password"
-                    x-model="credentials.password"
-                    :disabled="status.authenticated || autoLoggingIn"
-                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50"
-                    placeholder="Enter your IBKR password"
-                    required
-                />
-            </div>
-
-            <div>
-                <label for="trading_mode" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Trading Mode
-                </label>
-                <select
-                    id="trading_mode"
-                    x-model="credentials.trading_mode"
-                    :disabled="status.authenticated || autoLoggingIn"
-                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50"
-                >
-                    <option value="paper">Paper Trading</option>
-                    <option value="live">Live Trading</option>
-                </select>
-            </div>
-
-            <button
-                type="submit"
-                :disabled="status.authenticated || autoLoggingIn || !credentials.username || !credentials.password"
-                class="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                <i class="fa fa-robot mr-2"></i>
-                <span x-text="autoLoggingIn ? 'Logging in...' : (status.authenticated ? 'Already Connected' : 'Automated Login')"></span>
-            </button>
-        </form>
-
-        <div x-show="autoLoginMessage" class="mt-4 p-3 rounded" :class="autoLoginSuccess ? 'bg-green-50 dark:bg-green-900 text-green-800 dark:text-green-200' : 'bg-red-50 dark:bg-red-900 text-red-800 dark:text-red-200'">
-            <p x-text="autoLoginMessage"></p>
-        </div>
-    </div>
-
     <!-- Manual Action Buttons -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
         <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Manual Actions</h2>
@@ -254,14 +189,6 @@ document.addEventListener('alpine:init', () => {
         selectedAccount: null,
         checking: false,
         loggingIn: false,
-        autoLoggingIn: false,
-        autoLoginMessage: '',
-        autoLoginSuccess: false,
-        credentials: {
-            username: 'hiuhiu250',
-            password: 'qazwsX321',
-            trading_mode: 'paper'
-        },
 
         async init() {
             await this.checkStatus();
@@ -330,59 +257,6 @@ document.addEventListener('alpine:init', () => {
             } catch (error) {
                 console.error('Logout error:', error);
                 alert('Logout failed: ' + error.message);
-            }
-        },
-
-        async automatedLogin() {
-            if (this.autoLoggingIn) return;
-
-            this.autoLoggingIn = true;
-            this.autoLoginMessage = '';
-
-            try {
-                const response = await fetch('/api/ibkr/auth/auto-login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(this.credentials)
-                });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    this.autoLoginSuccess = result.success;
-                    this.autoLoginMessage = result.message;
-
-                    if (result.success) {
-                        // Check status after a delay to see if authentication completed
-                        setTimeout(() => this.checkStatus(), 3000);
-
-                        // If requires 2FA, keep checking status periodically
-                        if (result.requires_2fa) {
-                            const checkInterval = setInterval(async () => {
-                                await this.checkStatus();
-                                if (this.status.authenticated) {
-                                    clearInterval(checkInterval);
-                                    this.autoLoginMessage = 'Authentication completed successfully!';
-                                    this.autoLoginSuccess = true;
-                                }
-                            }, 5000);
-
-                            // Stop checking after 5 minutes
-                            setTimeout(() => clearInterval(checkInterval), 300000);
-                        }
-                    }
-                } else {
-                    const error = await response.json();
-                    this.autoLoginSuccess = false;
-                    this.autoLoginMessage = `Login failed: ${error.detail || 'Unknown error'}`;
-                }
-            } catch (error) {
-                console.error('Automated login error:', error);
-                this.autoLoginSuccess = false;
-                this.autoLoginMessage = 'Login failed: ' + error.message;
-            } finally {
-                this.autoLoggingIn = false;
             }
         },
 

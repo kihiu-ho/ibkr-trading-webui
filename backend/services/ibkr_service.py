@@ -291,7 +291,7 @@ class IBKRService:
         try:
             async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
                 # Check tickle endpoint for server status
-                tickle_response = await client.get(f"{self.base_url}/v1/api/tickle")
+                tickle_response = await client.get(f"{self.base_url}/tickle")
 
                 if tickle_response.status_code == 200:
                     tickle_data = tickle_response.json()
@@ -305,6 +305,15 @@ class IBKRService:
                         "message": auth_status.get('message', ''),
                         "gateway_url": self.base_url,
                         "tickle_data": tickle_data
+                    }
+                elif tickle_response.status_code == 401:
+                    # Gateway is online but requires authentication
+                    return {
+                        "server_online": True,
+                        "authenticated": False,
+                        "connected": False,
+                        "error": "Authentication required. Please login to IBKR Gateway.",
+                        "gateway_url": self.base_url
                     }
                 else:
                     return {

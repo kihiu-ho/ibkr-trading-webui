@@ -74,7 +74,7 @@ echo ""
 echo "3. Testing IBKR Gateway Connectivity"
 echo "-------------------------------------"
 echo -n "Testing Gateway Tickle... "
-if curl -s -k --max-time 5 "$GATEWAY_URL/v1/api/tickle" > /dev/null 2>&1; then
+if curl -s -k --max-time 5 "$GATEWAY_URL/tickle" > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Gateway is reachable${NC}"
     PASSED=$((PASSED + 1))
 else

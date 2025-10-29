@@ -378,7 +378,7 @@ if [ "$SKIP_HEALTH_CHECKS" = false ]; then
     print_info "Checking IBKR Gateway (may take 60-90 seconds)..."
     IBKR_READY=false
     for i in {1..60}; do
-        if docker exec ibkr-gateway curl -k -f https://localhost:5055/v1/api/tickle &> /dev/null 2>&1; then
+        if docker exec ibkr-gateway curl -k -f https://localhost:5055/tickle &> /dev/null 2>&1; then
             print_status "IBKR Gateway is ready"
             IBKR_READY=true
             break

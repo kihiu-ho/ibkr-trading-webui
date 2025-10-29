@@ -27,7 +27,7 @@ echo ""
 
 # Check if gateway API is responding
 echo -e "${BLUE}2. Checking if Gateway API is responding...${NC}"
-TICKLE_RESPONSE=$(curl -k -s https://localhost:5055/v1/api/tickle)
+TICKLE_RESPONSE=$(curl -k -s https://localhost:5055/tickle)
 if [ -n "$TICKLE_RESPONSE" ]; then
     echo -e "   ${GREEN}✓ Gateway API is responding${NC}"
     echo -e "   Response: ${TICKLE_RESPONSE}"
@@ -40,7 +40,7 @@ echo ""
 
 # Check authentication status
 echo -e "${BLUE}3. Checking authentication status...${NC}"
-AUTH_RESPONSE=$(curl -k -s https://localhost:5055/v1/api/iserver/auth/status)
+AUTH_RESPONSE=$(curl -k -s https://localhost:5055/iserver/auth/status)
 
 # Handle "Access Denied" which means not authenticated
 if echo "$AUTH_RESPONSE" | grep -qi "access denied"; then

@@ -233,7 +233,7 @@ async def check_gateway_health():
         import httpx
 
         async with httpx.AsyncClient(timeout=5.0, verify=False) as client:
-            response = await client.get(f"{settings.IBKR_API_BASE_URL}/v1/api/tickle")
+            response = await client.get(f"{settings.IBKR_API_BASE_URL}/tickle")
 
             if response.status_code == 200:
                 data = response.json()

@@ -11,7 +11,7 @@ echo ""
 
 # Check if gateway is listening
 echo "2. Port Connectivity:"
-if curl -k -s -o /dev/null -w "%{http_code}" https://localhost:5055/v1/api/tickle | grep -q "401\|403"; then
+if curl -k -s -o /dev/null -w "%{http_code}" https://localhost:5055/tickle | grep -q "401\|403"; then
     echo "✅ Gateway is responding (authentication required)"
 else
     echo "⏳ Gateway may still be initializing..."
@@ -25,7 +25,7 @@ echo ""
 
 # Test from inside container
 echo "4. Internal API Test:"
-docker exec ibkr-gateway curl -k -s https://localhost:5055/v1/api/tickle 2>&1 | head -c 100
+docker exec ibkr-gateway curl -k -s https://localhost:5055/tickle 2>&1 | head -c 100
 echo ""
 echo ""
 
