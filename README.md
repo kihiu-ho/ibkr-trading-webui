@@ -7,7 +7,7 @@ https://www.youtube.com/watch?v=CRsH9TKveLo
 ## Requirements
 
 * Docker Desktop - https://www.docker.com/products/docker-desktop/
-* External PostgreSQL Database (Neon, AWS RDS, etc.) - See [Database Setup Guide](DATABASE_SETUP.md)
+* External PostgreSQL Database (Neon, AWS RDS, etc.) - See [Database Setup Guide](docs/guides/DATABASE_SETUP_AIRFLOW_MLFLOW.md)
 
 ## Quick Start
 
@@ -23,7 +23,7 @@ cd interactive-brokers-web-api
 cp env.example .env
 
 # Edit .env and set your DATABASE_URL (REQUIRED)
-# See DATABASE_SETUP.md for detailed instructions
+# See docs/guides/DATABASE_SETUP_AIRFLOW_MLFLOW.md for detailed instructions
 nano .env  # or use your preferred editor
 ```
 
@@ -37,7 +37,7 @@ OPENAI_API_KEY=your_key_here
 IBKR_ACCOUNT_ID=DU1234567
 ```
 
-See [OpenAI API Configuration Guide](OPENAI_API_CONFIGURATION.md) for using TuringAI or other OpenAI-compatible providers.
+See [OpenAI API Configuration Guide](docs/implementation/OPENAI_API_CONFIGURATION.md) for using TuringAI or other OpenAI-compatible providers.
 
 ### 3. Bring up the container
 ```
@@ -90,7 +90,7 @@ docker-compose logs -f celery-worker
 ```
 
 ### Troubleshooting
-See `TROUBLESHOOTING.md` for detailed solutions to common issues, including:
+See [TROUBLESHOOTING.md](docs/guides/TROUBLESHOOTING.md) for detailed solutions to common issues, including:
 - Environment variable reloading (Issue 11)
 - Database connection issues
 - Service startup failures

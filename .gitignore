@@ -1,0 +1,235 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+webapp/venv/
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# Airflow Logs and Artifacts
+reference/airflow/logs/
+**/airflow/logs/
+logs/
+*.log
+reference/airflow/logs/dag_id=*/
+reference/airflow/logs/*/dag_id=*/
+reference/airflow/logs/*/run_id=*/
+reference/airflow/logs/*/task_id=*/
+reference/airflow/logs/*/attempt=*.log
+
+# Airflow specific patterns
+**/dag_id=*/
+**/run_id=*/
+**/task_id=*/
+**/attempt=*.log
+dag_processor_manager/
+scheduler/
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+*.dockerignore
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+.env.test
+*.env
+
+# Node.js (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+.pnpm-debug.log*
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+test-results/
+coverage.xml
+*.cover
+*.py,cover
+.cache
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# MLflow
+mlruns/
+mlflow_artifacts/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+*.old
+
+# OS Files
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Application specific
+*.pid
+*.seed
+*.pid.lock
+
+# Chart files (generated)
+*.png
+*.jpg
+*.jpeg
+!reference/**/*.png
+!docs/**/*.png
+!webapp/**/*.png
+!frontend/**/*.png
+
+# MinIO data
+minio_data/
+minio/
+
+# Redis dumps
+dump.rdb
+
+# PostgreSQL
+*.pgsql
+*.sql.backup
+
+# Local configuration
+config.local.yaml
+config.local.yml
+conf.local.yaml
+
+# Backup files
+*.orig
+*.save
+*.swp
+*~
+
+# Logs (general)
+*.log
+logs/
+*.log.*
+
+# Temporary analysis files
+*.analysis
+*.report
+debug_mode_test_results.log
+
+# Build artifacts
+*.tar.gz
+*.zip
+*.rar
+
+# Local development
+.local/
+local/
+
+# Coverage reports
+.coverage.*
+coverage/
+.nyc_output/
+
+# Python type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Ruff
+.ruff_cache/
+
+# PDM
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+
+# Airflow XCom data
+airflow_xcom/
+
+# Generated models
+*.pkl
+*.pickle
+*.joblib
+models/*.pkl
+models/*.pickle
+!reference/airflow/models/.gitkeep
+
+# ML artifacts
+artifacts/
+runs/
+experiments/
+
+# Keep directory structure but ignore logs
+!reference/airflow/logs/.gitkeep
+

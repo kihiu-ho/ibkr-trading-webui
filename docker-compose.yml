@@ -61,10 +61,29 @@ x-airflow-common: &airflow-common
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    # PostgreSQL connection for workflows
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: '5432'
+    POSTGRES_DB: postgres
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    # MLflow configuration
     MLFLOW_TRACKING_URI: 'http://mlflow-server:5500'
     MLFLOW_S3_ENDPOINT_URL: 'http://minio:9000'
+    MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-ibkr-stock-data}
+    # Workflow configuration
+    DEBUG_MODE: ${DEBUG_MODE:-false}
+    STOCK_SYMBOLS: ${STOCK_SYMBOLS:-TSLA,NVDA}
+    ENVIRONMENT: ${ENVIRONMENT:-development}
+    # LLM configuration
+    LLM_PROVIDER: ${LLM_VISION_PROVIDER:-openai}
+    LLM_API_BASE_URL: ${OPENAI_API_BASE:-https://api.openai.com/v1}
+    LLM_API_KEY: ${OPENAI_API_KEY:-}
+    LLM_MODEL: ${OPENAI_MODEL:-gpt-4o}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
   volumes:
-    - ./reference/airflow/dags:/opt/airflow/dags
+    - ./dags:/opt/airflow/dags
     - ./reference/airflow/logs:/opt/airflow/logs
     - ./reference/airflow/config:/opt/airflow/config
     - ./reference/airflow/plugins:/opt/airflow/plugins

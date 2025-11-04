@@ -1,4 +1,0 @@
-[2025-11-02T08:43:16.713+0000] {local_task_job_runner.py:123} INFO - ::group::Pre task execution logs
-[2025-11-02T08:43:18.811+0000] {taskinstance.py:2614} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: ibkr_trading_strategy.start_mlflow_tracking manual__2025-11-02T08:30:43+00:00 [queued]>
-[2025-11-02T08:43:19.743+0000] {taskinstance.py:2614} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: ibkr_trading_strategy.start_mlflow_tracking manual__2025-11-02T08:30:43+00:00 [queued]>
-[2025-11-02T08:43:19.744+0000] {taskinstance.py:2867} INFO - Starting attempt 3 of 4

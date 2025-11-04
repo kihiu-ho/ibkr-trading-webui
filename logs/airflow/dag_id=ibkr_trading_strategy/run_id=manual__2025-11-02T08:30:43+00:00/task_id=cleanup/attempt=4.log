@@ -1,4 +1,0 @@
-[2025-11-02T09:31:46.767+0000] {local_task_job_runner.py:123} INFO - ::group::Pre task execution logs
-[2025-11-02T09:31:49.607+0000] {taskinstance.py:2614} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: ibkr_trading_strategy.cleanup manual__2025-11-02T08:30:43+00:00 [queued]>
-[2025-11-02T09:31:52.819+0000] {taskinstance.py:2614} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: ibkr_trading_strategy.cleanup manual__2025-11-02T08:30:43+00:00 [queued]>
-[2025-11-02T09:31:52.827+0000] {taskinstance.py:2867} INFO - Starting attempt 4 of 4

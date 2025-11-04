@@ -28,6 +28,14 @@ RUN uv pip install --no-cache \
     tqdm \
     tqdm-joblib \
     confluent-kafka \
+    pandas \
+    numpy \
+    matplotlib \
+    mplfinance \
+    pydantic \
+    openai \
+    anthropic \
+    ib-insync \
     && echo "✓ Installed ML and data processing packages using uv"
 
 # Patch the hardcoded timeout from 120 seconds to 300 seconds

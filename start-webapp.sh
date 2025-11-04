@@ -342,25 +342,25 @@ if [ "$SKIP_HEALTH_CHECKS" = false ]; then
             print_status "$service is healthy"
         else
             # Give services time to start up
-            for i in {1..30}; do
+    for i in {1..30}; do
                 if $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
                     print_status "$service is healthy"
-                    break
-                fi
+            break
+        fi
                 sleep 2
-            done
+    done
 
             # Check final status
             if ! $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
                 print_error "$service failed health check"
                 echo "Service status:"
                 $COMPOSE_CMD ps "$service"
-                echo ""
+        echo ""
                 echo "Recent logs:"
                 docker logs "$service" --tail 20
-                exit 1
-            fi
-        fi
+        exit 1
+    fi
+fi
     done
 
     # Wait for airflow-init to complete (runs once for database initialization)
@@ -369,8 +369,8 @@ if [ "$SKIP_HEALTH_CHECKS" = false ]; then
         for i in {1..60}; do  # Allow up to 2 minutes for init
             if $COMPOSE_CMD ps "airflow-init" --format json | jq -e '.State == "exited" and .ExitCode == 0' &> /dev/null 2>&1; then
                 print_status "airflow-init completed successfully"
-                break
-            fi
+            break
+        fi
             if [ $((i % 10)) -eq 0 ]; then
                 printf "."
             fi
@@ -386,19 +386,19 @@ if [ "$SKIP_HEALTH_CHECKS" = false ]; then
         for i in {1..45}; do  # Longer timeout for app services
             if $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
                 print_status "$service is healthy"
-                break
-            fi
-            if [ $((i % 10)) -eq 0 ]; then
-                printf "."
-            fi
+            break
+        fi
+        if [ $((i % 10)) -eq 0 ]; then
+            printf "."
+        fi
             sleep 2
-        done
+    done
 
-        echo ""
+    echo ""
         if ! $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
             print_info "$service may still be initializing"
             print_info "Check logs: docker logs $service"
-        fi
+    fi
     done
 fi
 
@@ -427,19 +427,19 @@ if [ "$SKIP_HEALTH_CHECKS" = false ]; then
         for i in {1..45}; do  # Reasonable timeout for optional services
             if $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
                 print_status "$service is healthy"
-                break
-            fi
-            if [ $((i % 10)) -eq 0 ]; then
-                printf "."
-            fi
+            break
+        fi
+        if [ $((i % 10)) -eq 0 ]; then
+            printf "."
+        fi
             sleep 2
-        done
+    done
 
-        echo ""
+    echo ""
         if ! $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
             print_info "$service may still be initializing"
             print_info "Check logs: docker logs $service"
-        fi
+    fi
     done
 fi
 
@@ -550,7 +550,7 @@ echo "  View Airflow logs:    docker logs -f ibkr-airflow-webserver"
 fi
 echo "  Stop all services:    ./stop-all.sh"
 echo "  Restart services:     docker-compose restart"
-echo "  Run tests:            ./run_tests.sh"
+echo "  Run tests:            ./tests/scripts/run-tests.sh"
 echo ""
 echo -e "${YELLOW}⚠️  First-time IBKR Gateway Setup:${NC}"
 echo "  1. Open https://localhost:5055 in your browser"
@@ -559,14 +559,14 @@ echo "  3. Log in with your IBKR credentials"
 echo "  4. The gateway will maintain the session"
 echo ""
 echo -e "${BLUE}🧪 Testing:${NC}"
-echo "  Run test suite:       ./run_tests.sh"
+echo "  Run test suite:       ./tests/scripts/run-tests.sh"
 echo "  102 comprehensive tests covering all services"
 echo ""
 echo -e "${BLUE}📚 Documentation:${NC}"
 echo "  Main README:          README.md"
-echo "  System Complete:      SYSTEM_100_PERCENT_COMPLETE.md"
-echo "  Test Suite:           FINAL_TEST_SUITE_COMPLETE.md"
-echo "  Session Summary:      SESSION_FINAL_SUMMARY.md"
+echo "  Quick Start:          docs/guides/QUICK_START.md"
+echo "  Troubleshooting:      docs/guides/TROUBLESHOOTING.md"
+echo "  Folder Structure:     AGENTS.md"
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║  🚀 Ready for automated trading! Visit http://localhost:8000 ║${NC}"
@@ -581,11 +581,11 @@ echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo ""
     print_header "Running Test Suite"
-    if [ -f "$PROJECT_ROOT/run_tests.sh" ]; then
-        chmod +x "$PROJECT_ROOT/run_tests.sh"
-        "$PROJECT_ROOT/run_tests.sh"
+    if [ -f "$PROJECT_ROOT/tests/scripts/run-tests.sh" ]; then
+        chmod +x "$PROJECT_ROOT/tests/scripts/run-tests.sh"
+        "$PROJECT_ROOT/tests/scripts/run-tests.sh"
     else
-        print_error "Test runner not found at $PROJECT_ROOT/run_tests.sh"
+        print_error "Test runner not found at $PROJECT_ROOT/tests/scripts/run-tests.sh"
     fi
     echo ""
 fi
