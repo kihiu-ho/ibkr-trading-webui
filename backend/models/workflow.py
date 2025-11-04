@@ -37,6 +37,8 @@ class WorkflowExecution(Base):
     # Relationships
     strategy = relationship("Strategy", back_populates="workflow_executions")
     agent_conversations = relationship("AgentConversation", back_populates="execution", cascade="all, delete-orphan")
+    charts = relationship("Chart", back_populates="execution", cascade="all, delete-orphan")
+    llm_analyses = relationship("LLMAnalysis", back_populates="execution", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<WorkflowExecution(id={self.id}, strategy_id={self.strategy_id}, status={self.status})>"

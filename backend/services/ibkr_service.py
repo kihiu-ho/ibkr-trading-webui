@@ -44,7 +44,20 @@ class IBKRService:
     async def get_accounts(self) -> List[str]:
         """Get list of accounts."""
         response = await self._request("GET", "/portfolio/accounts")
-        return response.get("accounts", [])
+
+        # IBKR API returns accounts list directly, not wrapped in "accounts" key
+        if isinstance(response, list):
+            # Extract account IDs from the list of account objects
+            return [account.get("id", account.get("accountId", str(account))) for account in response]
+        elif isinstance(response, dict):
+            # Fallback for dict response
+            accounts = response.get("accounts", [])
+            if isinstance(accounts, list):
+                return [account.get("id", account.get("accountId", str(account))) for account in accounts]
+            else:
+                return []
+        else:
+            return []
     
     async def search_contracts(self, symbol: str) -> List[Dict[str, Any]]:
         """

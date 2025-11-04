@@ -300,14 +300,38 @@ async def _execute_workflow_for_code(
     step_start = time.time()
     
     try:
-        daily_data_raw = await task.ibkr.get_historical_data(conid, period="1y", bar="1d")
+        # Check DEBUG_MODE and use cache if enabled
+        from backend.config.settings import settings
+        data_source = "live_api"
+        
+        if settings.DEBUG_MODE or settings.CACHE_ENABLED:
+            logger.info(f"{'DEBUG MODE' if settings.DEBUG_MODE else 'CACHE MODE'}: Using cache service for {symbol}")
+            from backend.services.market_data_cache_service import MarketDataCacheService
+            cache_service = MarketDataCacheService(db)
+            
+            result = await cache_service.get_or_fetch_market_data(
+                symbol=symbol,
+                exchange="NASDAQ",  # TODO: Get from symbol metadata
+                data_type="daily",
+                timeframe="1d",
+                period="1y",
+                force_refresh=False
+            )
+            daily_data_raw = result.get("data", {})
+            data_source = result.get("source", "unknown")
+            logger.info(f"✓ Data source: {data_source} for {symbol}")
+        else:
+            logger.info(f"LIVE MODE: Fetching from IBKR for {symbol}")
+            daily_data_raw = await task.ibkr.get_historical_data(conid, period="1y", bar="1d")
+            data_source = "live_api"
+        
         step_duration = int((time.time() - step_start) * 1000)
         
         _log_workflow_step(
             db, execution_id,
             "fetch_daily_data", "fetch_data",
-            {"symbol": symbol, "conid": conid, "period": "1y", "bar": "1d"},
-            {"data_points": len(daily_data_raw.get('data', [])), "raw_response_keys": list(daily_data_raw.keys())},
+            {"symbol": symbol, "conid": conid, "period": "1y", "bar": "1d", "debug_mode": settings.DEBUG_MODE},
+            {"data_points": len(daily_data_raw.get('data', [])), "raw_response_keys": list(daily_data_raw.keys()), "data_source": data_source},
             duration_ms=step_duration,
             code=symbol,
             conid=conid
@@ -332,22 +356,82 @@ async def _execute_workflow_for_code(
     logger.info("Step 2: Generating daily chart")
     step_start = time.time()
     
-    daily_chart_png = task.chart.generate_chart(daily_df, symbol, "1D")
-    daily_chart_name = f"charts/{symbol}_daily_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-    daily_chart_url = task.storage.upload_chart(daily_chart_png, daily_chart_name)
+    daily_chart_jpeg, daily_chart_html = await task.chart.generate_chart(
+        symbol=symbol,
+        market_data=daily_df,
+        indicators_list=[],  # TODO: Add indicators from strategy config
+        period=200,
+        frequency="1D"
+    )
+    daily_chart_name = f"charts/{symbol}_daily_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+    daily_chart_url = task.storage.upload_chart(daily_chart_jpeg, daily_chart_name)
     step_duration = int((time.time() - step_start) * 1000)
+    
+    # Save chart to database
+    from backend.services.chart_persistence_service import ChartPersistenceService
+    chart_service = ChartPersistenceService(db)
+    
+    indicators_config = {
+        "RSI": {"period": 14},
+        "MACD": {"fast": 12, "slow": 26, "signal": 9},
+        "SMA": {"periods": [20, 50, 200]},
+        "Bollinger_Bands": {"period": 20, "std": 2},
+        "SuperTrend": {"period": 10, "multiplier": 3}
+    }
+    
+    # Handle both uppercase and lowercase column names
+    close_col = 'Close' if 'Close' in daily_df.columns else 'close'
+    volume_col = 'Volume' if 'Volume' in daily_df.columns else 'volume'
+    
+    # Get start and end dates from DataFrame index (if datetime) or from date column
+    start_date = None
+    end_date = None
+    if len(daily_df) > 0:
+        try:
+            # Try to use DataFrame index if it's a DatetimeIndex
+            if hasattr(daily_df.index, 'to_pydatetime'):
+                start_date = daily_df.index[0].to_pydatetime() if hasattr(daily_df.index[0], 'to_pydatetime') else daily_df.index[0]
+                end_date = daily_df.index[-1].to_pydatetime() if hasattr(daily_df.index[-1], 'to_pydatetime') else daily_df.index[-1]
+            # Check if there's a 'date' or 'Date' column
+            elif 'date' in daily_df.columns or 'Date' in daily_df.columns:
+                date_col = 'date' if 'date' in daily_df.columns else 'Date'
+                start_date = daily_df[date_col].iloc[0]
+                end_date = daily_df[date_col].iloc[-1]
+        except Exception as e:
+            logger.warning(f"Could not extract dates from DataFrame: {e}")
+            start_date = None
+            end_date = None
+    
+    saved_chart = chart_service.save_chart(
+        execution_id=execution_id,
+        symbol=symbol,
+        conid=conid,
+        timeframe="1d",
+        chart_type="daily",
+        chart_url_jpeg=daily_chart_url,
+        chart_url_html=None,
+        indicators_applied=indicators_config,
+        data_points=len(daily_df),
+        start_date=start_date,
+        end_date=end_date,
+        price_current=float(daily_df[close_col].iloc[-1]) if len(daily_df) > 0 and close_col in daily_df.columns else None,
+        price_change_pct=float(((daily_df[close_col].iloc[-1] - daily_df[close_col].iloc[0]) / daily_df[close_col].iloc[0]) * 100) if len(daily_df) > 1 and close_col in daily_df.columns else None,
+        volume_avg=int(daily_df[volume_col].mean()) if len(daily_df) > 0 and volume_col in daily_df.columns else None,
+        minio_bucket="trading-charts",
+        minio_object_key=daily_chart_name
+    )
     
     _log_workflow_step(
         db, execution_id,
         "generate_daily_chart", "chart_generation",
         {"symbol": symbol, "timeframe": "1D", "data_points": len(daily_df)},
-        {"chart_url": daily_chart_url, "chart_name": daily_chart_name},
+        {"chart_url": daily_chart_url, "chart_name": daily_chart_name, "chart_id": saved_chart.id, "db_saved": True},
         duration_ms=step_duration,
         code=symbol,
         conid=conid
     )
     
-    logger.info(f"Daily chart uploaded: {daily_chart_url}")
+    logger.info(f"Daily chart uploaded: {daily_chart_url} (DB ID: {saved_chart.id})")
     
     # Step 3: Analyze daily chart with AI
     logger.info("Step 3: Analyzing daily chart with AI")
@@ -356,15 +440,35 @@ async def _execute_workflow_for_code(
     daily_analysis = await task.ai.analyze_daily_chart(symbol, daily_chart_url)
     step_duration = int((time.time() - step_start) * 1000)
     
+    # Save LLM analysis to database
+    from backend.services.llm_analysis_persistence_service import LLMAnalysisPersistenceService
+    llm_service = LLMAnalysisPersistenceService(db)
+    
+    saved_analysis = llm_service.save_analysis(
+        execution_id=execution_id,
+        chart_id=saved_chart.id,
+        symbol=symbol,
+        prompt_text=f"Analyze this {symbol} daily chart with technical indicators",
+        response_text=daily_analysis,
+        model_name="gpt-4-turbo-preview",  # TODO: Get from settings
+        timeframe="1d",
+        strategy_id=strategy.id,
+        indicators_metadata=indicators_config,
+        tokens_used=None,  # TODO: Track from API response
+        latency_ms=step_duration
+    )
+    
     _log_workflow_step(
         db, execution_id,
         "analyze_daily_chart", "ai_analysis",
         {"symbol": symbol, "chart_url": daily_chart_url},
-        {"analysis_length": len(daily_analysis), "analysis_preview": daily_analysis[:500]},
+        {"analysis_length": len(daily_analysis), "analysis_preview": daily_analysis[:500], "analysis_id": saved_analysis.id, "db_saved": True},
         duration_ms=step_duration,
         code=symbol,
         conid=conid
     )
+    
+    logger.info(f"Daily chart analysis completed for {symbol} (DB ID: {saved_analysis.id})")
     
     # Step 4: Fetch weekly data
     logger.info("Step 4: Fetching weekly historical data")

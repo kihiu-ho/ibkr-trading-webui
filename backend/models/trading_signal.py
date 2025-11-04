@@ -15,9 +15,17 @@ class TradingSignal(Base):
     # Primary key
     id = Column(Integer, primary_key=True, index=True)
     
+    # Foreign keys for traceability
+    execution_id = Column(Integer, ForeignKey("workflow_executions.id"), nullable=True, index=True)
+    chart_id = Column(Integer, ForeignKey("charts.id"), nullable=True, index=True)
+    llm_analysis_id = Column(Integer, ForeignKey("llm_analyses.id"), nullable=True, index=True)
+    
     # Symbol and strategy
     symbol = Column(String(50), nullable=False, index=True)
     strategy_id = Column(Integer, ForeignKey("strategies.id"), nullable=True)
+    
+    # Strategy metadata (indicators configuration used)
+    strategy_metadata = Column(JSON, nullable=True)
     
     # Signal details
     signal_type = Column(String(10), nullable=False)  # BUY, SELL, HOLD
@@ -85,6 +93,8 @@ class TradingSignal(Base):
     strategy = relationship("Strategy")
     prompt_template = relationship("PromptTemplate")
     orders = relationship("Order", back_populates="signal")
+    chart = relationship("Chart", back_populates="signals")
+    llm_analysis = relationship("LLMAnalysis", back_populates="signals")
     
     # Indexes
     __table_args__ = (

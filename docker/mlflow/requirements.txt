@@ -1,0 +1,6 @@
+cryptography
+boto3
+mlflow
+psycopg2-binary
+psycopg[binary]
+

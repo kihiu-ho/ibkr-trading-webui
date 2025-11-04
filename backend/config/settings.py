@@ -1,7 +1,7 @@
 """Application configuration settings."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
-from typing import Optional
+from pydantic import field_validator, BeforeValidator
+from typing import Optional, Annotated
 
 
 class Settings(BaseSettings):
@@ -54,6 +54,18 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = "your_key_here"
     OPENAI_MODEL: str = "gpt-4-turbo-preview"
     AI_REQUEST_TIMEOUT: int = 120
+    
+    # Market Data Cache & Debug Mode
+    DEBUG_MODE: bool = False  # Use cached data instead of live IBKR API
+    CACHE_ENABLED: bool = True  # Enable market data caching
+    _CACHE_SYMBOLS: str = "NVDA,TSLA"  # Internal comma-separated string
+    CACHE_EXCHANGE: str = "NASDAQ"  # Default exchange for cached symbols
+    CACHE_TTL_HOURS: int = 24  # Cache time-to-live in hours
+    
+    @property
+    def CACHE_SYMBOLS(self) -> list[str]:
+        """Parse CACHE_SYMBOLS from comma-separated string to list."""
+        return [s.strip() for s in self._CACHE_SYMBOLS.split(',') if s.strip()]
     
     # LLM Vision for Chart Analysis
     LLM_VISION_PROVIDER: str = "openai"  # "openai" or "gemini"

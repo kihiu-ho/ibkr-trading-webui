@@ -1,0 +1,24 @@
+======================================================================
+IBKR DEBUG MODE - COMPLETE DATABASE VERIFICATION
+======================================================================
+
+[0;34m📋 STEP 1: Verify DEBUG_MODE Configuration[0m
+----------------------------------------------------------------------
+Configuration:
+  DEBUG_MODE: true
+  CACHE_ENABLED: true
+  Cached Symbols: NVDA, AAPL, TSLA
+[0;32m✅ DEBUG_MODE is ENABLED[0m
+
+[0;34m📊 STEP 2: Initial Database State[0m
+----------------------------------------------------------------------
+
+Before Workflow Execution:
+  charts                       0 rows
+  llm_analyses                 0 rows
+  trading_signals              0 rows
+  workflow_executions          0 rows
+
+[0;34m🔄 STEP 3: Execute Workflow in DEBUG_MODE[0m
+----------------------------------------------------------------------
+[0;31m❌ No active strategy found[0m

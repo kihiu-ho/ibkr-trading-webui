@@ -63,6 +63,7 @@ WORKDIR /app
 # Copy application code with proper ownership
 COPY --chown=appuser:appuser backend ./backend/
 COPY --chown=appuser:appuser frontend ./frontend/
+COPY --chown=appuser:appuser scripts ./scripts/
 
 # Create logs directory
 RUN mkdir -p logs && chown -R appuser:appuser logs

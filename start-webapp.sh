@@ -116,7 +116,7 @@ print_header() {
 
 # Function to detect if Docker images exist
 detect_images() {
-    local images=("ibkr-backend:latest" "ibkr-gateway:latest")
+    local images=("ibkr-backend:latest" "ibkr-gateway:latest" "ibkr-airflow:latest" "ibkr-mlflow:latest")
     
     for image in "${images[@]}"; do
         if ! docker image inspect "$image" &> /dev/null 2>&1; then
@@ -172,6 +172,40 @@ else
     # Mask password for display
     DB_URL_MASKED=$(echo "$DATABASE_URL" | sed -E 's|(://[^:]+:)[^@]+(@)|\1****\2|')
     print_status "DATABASE_URL loaded: $DB_URL_MASKED"
+    
+    # Check for Airflow and MLflow database URLs if services will be used
+    if [ -z "$AIRFLOW_DATABASE_URL" ] || [ "$AIRFLOW_DATABASE_URL" = "postgresql+psycopg2://user:password@host:port/airflow?sslmode=require" ]; then
+        print_error "AIRFLOW_DATABASE_URL is not configured in .env!"
+        echo ""
+        echo "Airflow requires a database connection. Please either:"
+        echo "  1. Run the quick setup: ./setup-databases-quick.sh"
+        echo "  2. Or manually set AIRFLOW_DATABASE_URL in .env"
+        echo ""
+        echo "Example:"
+        echo "  AIRFLOW_DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/airflow?sslmode=require"
+        echo ""
+        echo "See DATABASE_SETUP_AIRFLOW_MLFLOW.md for full instructions."
+        echo ""
+        exit 1
+    fi
+
+    if [ -z "$MLFLOW_DATABASE_URL" ] || [ "$MLFLOW_DATABASE_URL" = "postgresql+psycopg2://user:password@host:port/mlflow?sslmode=require" ]; then
+        print_error "MLFLOW_DATABASE_URL is not configured in .env!"
+        echo ""
+        echo "MLflow requires a database connection. Please either:"
+        echo "  1. Run the quick setup: ./setup-databases-quick.sh"
+        echo "  2. Or manually set MLFLOW_DATABASE_URL in .env"
+        echo ""
+        echo "Example:"
+        echo "  MLFLOW_DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/mlflow?sslmode=require"
+        echo ""
+        echo "See DATABASE_SETUP_AIRFLOW_MLFLOW.md for full instructions."
+        echo ""
+        exit 1
+    fi
+
+    print_status "AIRFLOW_DATABASE_URL loaded"
+    print_status "MLFLOW_DATABASE_URL loaded"
 fi
 
 # Wait for Docker daemon to be ready
@@ -276,6 +310,14 @@ if [ "$NEED_BUILD" = true ]; then
     print_info "Building gateway image (ibkr-gateway:latest)..."
     docker build -f Dockerfile -t ibkr-gateway:latest .
     
+    # Build Airflow image (using reference structure)
+    print_info "Building Airflow image (ibkr-airflow:latest)..."
+    docker build -f reference/airflow/airflow/Dockerfile -t ibkr-airflow:latest reference/airflow/airflow/
+    
+    # Build MLflow image (using reference structure)
+    print_info "Building MLflow image (ibkr-mlflow:latest)..."
+    docker build -f reference/airflow/mlflow/Dockerfile -t ibkr-mlflow:latest reference/airflow/mlflow/
+    
     END_BUILD=$(date +%s)
     BUILD_TIME=$((END_BUILD - START_BUILD))
     
@@ -301,118 +343,113 @@ print_status "Services started in ${STARTUP_TIME}s"
 # Wait for services to be healthy (unless --fast flag is used)
 if [ "$SKIP_HEALTH_CHECKS" = true ]; then
     print_header "Health Checks Skipped (Fast Mode)"
-    print_info "Services are starting in background"
-    print_info "Use 'docker-compose ps' to check status"
+    print_info "Services are starting in background with dependency management"
+    print_info "Use '$COMPOSE_CMD ps' to check status"
     echo ""
 else
     print_header "Waiting for Services to be Ready"
+    print_info "Services are starting with proper dependency ordering..."
 fi
 
-# Skip health checks if fast mode
+# Note: PostgreSQL is external (not containerized), configured via DATABASE_URL,
+# AIRFLOW_DATABASE_URL, and MLFLOW_DATABASE_URL in .env file
+# Docker Compose handles internal service dependencies automatically
+
 if [ "$SKIP_HEALTH_CHECKS" = false ]; then
-    # Wait for PostgreSQL (skip if using external database)
-    if docker ps --format '{{.Names}}' | grep -q "ibkr-postgres"; then
-        print_info "Checking PostgreSQL..."
-        POSTGRES_READY=false
-        for i in {1..30}; do
-            if docker exec ibkr-postgres pg_isready -U postgres &> /dev/null 2>&1; then
-                print_status "PostgreSQL is ready"
-                POSTGRES_READY=true
+    # Use Docker Compose's built-in health checking and dependency management
+    print_info "Monitoring service startup progress..."
+
+    # Wait for core infrastructure services first
+    CORE_SERVICES=("redis" "minio")
+    for service in "${CORE_SERVICES[@]}"; do
+        print_info "Waiting for $service..."
+        if $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null; then
+            print_status "$service is healthy"
+        else
+            # Give services time to start up
+            for i in {1..30}; do
+                if $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
+                    print_status "$service is healthy"
+                    break
+                fi
+                sleep 2
+            done
+
+            # Check final status
+            if ! $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
+                print_error "$service failed health check"
+                echo "Service status:"
+                $COMPOSE_CMD ps "$service"
+                echo ""
+                echo "Recent logs:"
+                docker logs "$service" --tail 20
+                exit 1
+            fi
+        fi
+    done
+
+    # Wait for application services
+    APP_SERVICES=("ibkr-gateway" "backend")
+    for service in "${APP_SERVICES[@]}"; do
+        print_info "Waiting for $service..."
+        for i in {1..45}; do  # Longer timeout for app services
+            if $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
+                print_status "$service is healthy"
                 break
             fi
-            sleep 1
+            if [ $((i % 10)) -eq 0 ]; then
+                printf "."
+            fi
+            sleep 2
         done
 
-        if [ "$POSTGRES_READY" = false ]; then
-            print_error "PostgreSQL failed to start within 30 seconds"
-            echo ""
-            echo "Showing PostgreSQL logs:"
-            docker logs ibkr-postgres --tail 50
-            exit 1
-        fi
-    fi
-fi
-
-if [ "$SKIP_HEALTH_CHECKS" = false ]; then
-    # Wait for Redis
-    print_info "Checking Redis..."
-    REDIS_READY=false
-    for i in {1..30}; do
-        if docker exec ibkr-redis redis-cli ping &> /dev/null 2>&1; then
-            print_status "Redis is ready"
-            REDIS_READY=true
-            break
-        fi
-        sleep 1
-    done
-
-    if [ "$REDIS_READY" = false ]; then
-        print_error "Redis failed to start within 30 seconds"
         echo ""
-        echo "Showing Redis logs:"
-        docker logs ibkr-redis --tail 50
-        exit 1
-    fi
+        if ! $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
+            print_info "$service may still be initializing"
+            print_info "Check logs: docker logs $service"
+        fi
+    done
+fi
+
+# Check for Airflow and MLflow services (optional, won't fail if not present)
+AIRFLOW_ENABLED=false
+MLFLOW_ENABLED=false
+if $COMPOSE_CMD ps --services | grep -q "mlflow-server"; then
+    MLFLOW_ENABLED=true
+fi
+if $COMPOSE_CMD ps --services | grep -q "airflow-webserver"; then
+    AIRFLOW_ENABLED=true
 fi
 
 if [ "$SKIP_HEALTH_CHECKS" = false ]; then
-    # Wait for MinIO
-    print_info "Checking MinIO..."
-    MINIO_READY=false
-    for i in {1..30}; do
-        if docker exec ibkr-minio curl -f http://localhost:9000/minio/health/live &> /dev/null 2>&1; then
-            print_status "MinIO is ready"
-            MINIO_READY=true
-            break
-        fi
-        sleep 1
-    done
-
-    if [ "$MINIO_READY" = false ]; then
-        print_info "MinIO health check timeout (may still be starting)"
+    # Check optional services using Docker Compose health status
+    OPTIONAL_SERVICES=()
+    if [ "$MLFLOW_ENABLED" = true ]; then
+        OPTIONAL_SERVICES+=("mlflow-server")
     fi
-fi
-
-if [ "$SKIP_HEALTH_CHECKS" = false ]; then
-    # Wait for IBKR Gateway (may take longer to start)
-    print_info "Checking IBKR Gateway (may take 60-90 seconds)..."
-    IBKR_READY=false
-    for i in {1..60}; do
-        if docker exec ibkr-gateway curl -k -f https://localhost:5055/tickle &> /dev/null 2>&1; then
-            print_status "IBKR Gateway is ready"
-            IBKR_READY=true
-            break
-        fi
-        if [ $((i % 10)) -eq 0 ]; then
-            printf "."
-        fi
-        sleep 1
-    done
-
-    echo ""
-    if [ "$IBKR_READY" = false ]; then
-        print_info "IBKR Gateway may still be initializing (takes 1-2 minutes)"
-        print_info "Check logs: docker logs ibkr-gateway"
+    if [ "$AIRFLOW_ENABLED" = true ]; then
+        OPTIONAL_SERVICES+=("airflow-webserver")
     fi
-fi
 
-if [ "$SKIP_HEALTH_CHECKS" = false ]; then
-    # Wait for Backend
-    print_info "Checking Backend..."
-    BACKEND_READY=false
-    for i in {1..30}; do
-        if curl -f http://localhost:8000/health &> /dev/null 2>&1; then
-            print_status "Backend is ready"
-            BACKEND_READY=true
-            break
+    for service in "${OPTIONAL_SERVICES[@]}"; do
+        print_info "Waiting for $service..."
+        for i in {1..45}; do  # Reasonable timeout for optional services
+            if $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
+                print_status "$service is healthy"
+                break
+            fi
+            if [ $((i % 10)) -eq 0 ]; then
+                printf "."
+            fi
+            sleep 2
+        done
+
+        echo ""
+        if ! $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null 2>&1; then
+            print_info "$service may still be initializing"
+            print_info "Check logs: docker logs $service"
         fi
-        sleep 1
     done
-
-    if [ "$BACKEND_READY" = false ]; then
-        print_info "Backend may still be starting"
-        print_info "Check logs: docker logs ibkr-backend"
-    fi
 fi
 
 # Run database migrations
@@ -437,14 +474,27 @@ echo -e "${GREEN}║          All Services Running Successfully! 🎉           
 echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${BLUE}📦 Docker Containers:${NC}"
-echo "  ├─ ibkr-postgres       PostgreSQL database"
-echo "  ├─ ibkr-redis          Redis message broker"
-echo "  ├─ ibkr-minio          MinIO object storage"
-echo "  ├─ ibkr-gateway        IBKR Client Portal Gateway"
-echo "  ├─ ibkr-backend        FastAPI backend server"
-echo "  ├─ ibkr-celery-worker  Celery background worker"
-echo "  ├─ ibkr-celery-beat    Celery task scheduler"
-echo "  └─ ibkr-flower         Celery monitoring UI"
+echo "  ├─ Core Services:"
+echo "  │  ├─ ibkr-redis          Redis message broker"
+echo "  │  └─ ibkr-minio          MinIO object storage"
+echo "  ├─ Trading Services:"
+echo "  │  ├─ ibkr-gateway        IBKR Client Portal Gateway"
+echo "  │  ├─ ibkr-backend        FastAPI backend server"
+echo "  │  ├─ ibkr-celery-worker  Celery background worker"
+echo "  │  ├─ ibkr-celery-beat    Celery task scheduler"
+echo "  │  └─ ibkr-flower         Celery monitoring UI"
+if [ "$MLFLOW_ENABLED" = true ] || [ "$AIRFLOW_ENABLED" = true ]; then
+echo "  └─ ML/Workflow Services:"
+fi
+if [ "$MLFLOW_ENABLED" = true ]; then
+echo "     ├─ ibkr-mlflow-server  MLflow experiment tracking"
+fi
+if [ "$AIRFLOW_ENABLED" = true ]; then
+echo "     ├─ ibkr-airflow-webserver   Airflow web UI"
+echo "     ├─ ibkr-airflow-scheduler   Airflow scheduler"
+echo "     ├─ ibkr-airflow-worker      Airflow task worker"
+echo "     └─ ibkr-airflow-triggerer   Airflow triggerer"
+fi
 echo ""
 echo -e "${BLUE}🌐 Access Points:${NC}"
 echo "  ┌─ Main Application:"
@@ -460,11 +510,17 @@ echo ""
 echo "  ┌─ Support Services:"
 echo "  ├── IBKR Gateway:     https://localhost:5055"
 echo "  ├── Flower Monitor:   http://localhost:5555"
+if [ "$MLFLOW_ENABLED" = true ]; then
+echo "  ├── MLflow UI:        http://localhost:5500          ⭐"
+fi
+if [ "$AIRFLOW_ENABLED" = true ]; then
+echo "  ├── Airflow UI:       http://localhost:8080          ⭐"
+fi
 echo "  └── MinIO Console:    http://localhost:9001"
 echo ""
 echo -e "${BLUE}📊 System Status:${NC}"
 echo "  ✓ Backend:            READY (Port 8000)"
-echo "  ✓ Database:           READY (External Neon)"
+echo "  ✓ Database:           READY (External PostgreSQL)"
 echo "  ✓ Redis:              READY (Port 6379)"
 echo "  ✓ MinIO:              READY (Port 9000)"
 if [ "$IBKR_READY" = true ]; then
@@ -474,12 +530,32 @@ else
 fi
 echo "  ✓ Celery Worker:      READY"
 echo "  ✓ Celery Beat:        READY"
+if [ "$MLFLOW_ENABLED" = true ]; then
+    if [ "$MLFLOW_READY" = true ]; then
+        echo "  ✓ MLflow Server:      READY (Port 5500)"
+    else
+        echo "  ⏳ MLflow Server:      STARTING (check logs)"
+    fi
+fi
+if [ "$AIRFLOW_ENABLED" = true ]; then
+    if [ "$AIRFLOW_READY" = true ]; then
+        echo "  ✓ Airflow Webserver:  READY (Port 8080)"
+    else
+        echo "  ⏳ Airflow Webserver:  STARTING (check logs)"
+    fi
+fi
 echo ""
 echo -e "${BLUE}📋 Useful Commands:${NC}"
 echo "  View all logs:        docker-compose logs -f"
 echo "  View backend logs:    docker logs -f ibkr-backend"
 echo "  View celery logs:     docker logs -f ibkr-celery-worker"
 echo "  View gateway logs:    docker logs -f ibkr-gateway"
+if [ "$MLFLOW_ENABLED" = true ]; then
+echo "  View MLflow logs:     docker logs -f ibkr-mlflow-server"
+fi
+if [ "$AIRFLOW_ENABLED" = true ]; then
+echo "  View Airflow logs:    docker logs -f ibkr-airflow-webserver"
+fi
 echo "  Stop all services:    ./stop-all.sh"
 echo "  Restart services:     docker-compose restart"
 echo "  Run tests:            ./run_tests.sh"

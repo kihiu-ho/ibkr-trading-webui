@@ -28,12 +28,58 @@ x-common-variables: &common-env
   OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4-turbo-preview}"
   LLM_VISION_MODEL: "${LLM_VISION_MODEL:-gpt-4-vision-preview}"
   LLM_VISION_PROVIDER: "${LLM_VISION_PROVIDER:-openai}"
+  # Market Data Cache & Debug Mode
+  DEBUG_MODE: "true"
+  CACHE_ENABLED: "true"
+  CACHE_SYMBOLS: "NVDA,TSLA"
+  CACHE_EXCHANGE: "NASDAQ"
+  CACHE_TTL_HOURS: "24"
+  # Airflow & MLflow
+  MLFLOW_TRACKING_URI: "http://mlflow-server:5500"
+  MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
+  AWS_ACCESS_KEY_ID: "${MINIO_ACCESS_KEY:-minioadmin}"
+  AWS_SECRET_ACCESS_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
 
 x-logging: &default-logging
   driver: "json-file"
   options:
     max-size: "10m"
     max-file: "3"
+
+# Airflow common configuration
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
+  image: ibkr-airflow:latest
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    MLFLOW_TRACKING_URI: 'http://mlflow-server:5500'
+    MLFLOW_S3_ENDPOINT_URL: 'http://minio:9000'
+  volumes:
+    - ./reference/airflow/dags:/opt/airflow/dags
+    - ./reference/airflow/logs:/opt/airflow/logs
+    - ./reference/airflow/config:/opt/airflow/config
+    - ./reference/airflow/plugins:/opt/airflow/plugins
+    - ./reference/airflow/models:/app/models
+    - ./reference/airflow/config.yaml:/app/config.yaml
+    - ./.env:/app/.env
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on: &airflow-common-depends-on
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+  networks:
+    - trading-network
+  logging: *default-logging
 
 services:
   # Redis - Message Broker and Cache (starts first, fastest startup)
@@ -64,6 +110,36 @@ services:
       start_period: 5s
     sysctls:
       - net.core.somaxconn=1024
+
+  # PostgreSQL - Local Database for Airflow and MLflow
+  postgres:
+    image: postgres:15
+    container_name: ibkr-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - trading-network
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
 
   # MinIO - S3-compatible Object Storage (starts in parallel with Redis)
   minio:
@@ -260,10 +336,172 @@ services:
       start_period: 15s
     command: ["celery", "-A", "backend.celery_app", "flower", "--port=5555"]
 
+  # MinIO Client - Creates required buckets for MLflow
+  mc:
+    image: minio/mc
+    container_name: ibkr-mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: "${MINIO_ACCESS_KEY:-minioadmin}"
+      AWS_SECRET_ACCESS_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
+    entrypoint: >
+      /bin/sh -c "
+      /scripts/wait-for-it.sh minio:9000 &&
+      /usr/bin/mc alias set minio http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin} &&
+      /usr/bin/mc mb minio/mlflow || true;
+      exit 0;
+      "
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - trading-network
+    logging: *default-logging
+
+  # MLflow Server - ML Experiment Tracking and Model Registry
+  mlflow-server:
+    build:
+      context: ./reference/airflow/mlflow
+      dockerfile: Dockerfile
+    image: ibkr-mlflow:latest
+    container_name: ibkr-mlflow-server
+    depends_on:
+      mc:
+        condition: service_completed_successfully
+    ports:
+      - "5500:5500"
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: "${MINIO_ACCESS_KEY:-minioadmin}"
+      AWS_SECRET_ACCESS_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
+    command: mlflow server --port 5500 --host 0.0.0.0 --backend-store-uri ${MLFLOW_DATABASE_URL} --default-artifact-root s3://mlflow
+    networks:
+      - trading-network
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # Airflow Init - Database initialization
+  airflow-init:
+    <<: *airflow-common
+    container_name: ibkr-airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        # Wait for postgres to be ready
+        until pg_isready -h postgres -p 5432 -U airflow; do
+          echo "Waiting for postgres..."
+          sleep 2
+        done
+        # Initialize database
+        /entrypoint airflow db init
+        # Create admin user
+        /entrypoint airflow users create \
+          --username ${_AIRFLOW_WWW_USER_USERNAME:-airflow} \
+          --password ${_AIRFLOW_WWW_USER_PASSWORD:-airflow} \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com || echo "User may already exist"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *airflow-common-env
+    networks:
+      - trading-network
+    restart: "no"
+
+  # Airflow Webserver with LocalExecutor - Using official entrypoint pattern
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: ibkr-airflow-webserver
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        # Use official Airflow entrypoint which handles initialization properly
+        # Local PostgreSQL connection is already configured in environment
+        # _AIRFLOW_DB_MIGRATE handles database migration automatically
+        exec /entrypoint webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+    networks:
+      - trading-network
+    logging: *default-logging
+
+  # Airflow Scheduler with LocalExecutor - Runs tasks in same process
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: ibkr-airflow-scheduler
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        # Use official Airflow entrypoint which handles initialization properly
+        # Local PostgreSQL connection is already configured in environment
+        exec /entrypoint scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      <<: *airflow-common-depends-on
+    environment:
+      <<: *airflow-common-env
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    networks:
+      - trading-network
+    logging: *default-logging
+
 # Optimized volumes with better performance settings
 volumes:
   redis_data:
     name: ibkr_redis_data
+    driver: local
+  postgres_data:
+    name: ibkr_postgres_data
     driver: local
   minio_data:
     name: ibkr_minio_data

@@ -2,7 +2,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from backend.api import health, strategies, orders, market_data, frontend, dashboard, ibkr_auth, indicators, signals, lineage, positions, workflows
+from backend.api import health, strategies, orders, market_data, market_data_cache, frontend, dashboard, ibkr_auth, indicators, signals, lineage, positions, workflows, charts, llm_analyses
 from backend.core.database import engine, get_db
 from backend.models import Base
 from backend.models.workflow_log import WorkflowLog
@@ -40,6 +40,7 @@ app.include_router(health.router, tags=["health"])
 app.include_router(workflows.router, tags=["workflows"])
 app.include_router(strategies.router, prefix="/api/strategies", tags=["strategies"])
 app.include_router(market_data.router, tags=["market"])
+app.include_router(market_data_cache.router, prefix="/api/market-data", tags=["market-data-cache"])
 app.include_router(indicators.router, prefix="/api/indicators", tags=["indicators"])
 app.include_router(signals.router, prefix="/api/signals", tags=["signals"])
 app.include_router(orders.router, prefix="/api/orders", tags=["orders"])
@@ -47,6 +48,8 @@ app.include_router(positions.router, tags=["positions"])
 app.include_router(lineage.router, tags=["lineage"])
 app.include_router(ibkr_auth.router, prefix="/api/ibkr/auth", tags=["ibkr-auth"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
+app.include_router(charts.router, prefix="/api", tags=["charts"])
+app.include_router(llm_analyses.router, prefix="/api", tags=["llm-analyses"])
 
 # Frontend routes
 app.include_router(frontend.router, tags=["frontend"])

@@ -1,0 +1,190 @@
+# IBKR Trading Workflow Configuration
+
+# Backend API Configuration
+backend:
+  base_url: "http://backend:8000"
+  timeout: 30
+  retry_attempts: 3
+  retry_delay: 5
+
+# MLflow Configuration  
+mlflow:
+  tracking_uri: "http://mlflow-server:5500"
+  experiment_name: "ibkr_trading_workflows"
+  artifact_location: "s3://mlflow/trading_workflows"
+
+# Market Configuration
+market:
+  trading_hours:
+    start: "09:30"  # 9:30 AM ET
+    end: "16:00"    # 4:00 PM ET
+    timezone: "America/New_York"
+  trading_days: [1, 2, 3, 4, 5]  # Monday to Friday
+
+# Default Workflow Settings
+defaults:
+  owner: "trading"
+  retries: 3
+  retry_delay: 300  # 5 minutes
+  retry_exponential_backoff: true
+  max_retry_delay: 1800  # 30 minutes
+  execution_timeout: 3600  # 1 hour
+  email_on_failure: false
+  email_on_retry: false
+
+# Workflow Templates
+workflows:
+  # Main Trading Strategy Workflow
+  trading_strategy:
+    description: "Complete trading workflow from data fetch to order placement"
+    schedule_interval: null  # Triggered programmatically or per-strategy
+    max_active_runs: 1
+    catchup: false
+    tags: ["trading", "strategy", "live"]
+    
+    tasks:
+      validate_environment:
+        task_id: "validate_environment"
+        type: "bash"
+        bash_command: |
+          echo "Validating environment..."
+          test -n "$DATABASE_URL" || exit 1
+          test -n "$IBKR_API_BASE_URL" || exit 1
+          echo "Environment valid!"
+        
+      check_market_open:
+        task_id: "check_market_open"
+        type: "market_open_sensor"
+        poke_interval: 300  # Check every 5 minutes
+        timeout: 3600  # Timeout after 1 hour
+        mode: "reschedule"  # Don't block worker
+        
+      check_ibkr_auth:
+        task_id: "check_ibkr_auth"
+        type: "ibkr_auth_sensor"
+        poke_interval: 60
+        timeout: 600
+        
+      fetch_market_data:
+        task_id: "fetch_market_data"
+        type: "market_data"
+        retries: 5
+        retry_delay: 30
+        
+      calculate_indicators:
+        task_id: "calculate_indicators"
+        type: "technical_indicators"
+        
+      generate_charts:
+        task_id: "generate_charts"
+        type: "chart_generation"
+        
+      llm_signal_generation:
+        task_id: "llm_signal_generation"
+        type: "llm_signal"
+        execution_timeout: 300  # 5 minutes for LLM
+        
+      risk_assessment:
+        task_id: "risk_assessment"
+        type: "risk_check"
+        
+      place_orders:
+        task_id: "place_orders"
+        type: "order_placement"
+        trigger_rule: "all_success"
+        
+      update_portfolio:
+        task_id: "update_portfolio"
+        type: "portfolio_update"
+        trigger_rule: "all_done"  # Run even if orders fail
+        
+      cleanup:
+        task_id: "cleanup"
+        type: "bash"
+        bash_command: "echo 'Workflow complete'"
+        trigger_rule: "all_done"
+
+  # Market Data Collection (Continuous)
+  market_data_collection:
+    description: "Collect and cache market data for multiple symbols"
+    schedule_interval: "*/5 * * * *"  # Every 5 minutes
+    max_active_runs: 1
+    catchup: false
+    tags: ["data", "market", "cache"]
+    
+    tasks:
+      check_market_hours:
+        task_id: "check_market_hours"
+        type: "market_open_sensor"
+        poke_interval: 60
+        timeout: 300
+        mode: "poke"
+        
+      fetch_batch_data:
+        task_id: "fetch_batch_data"
+        type: "market_data_batch"
+        retries: 3
+        
+      update_cache:
+        task_id: "update_cache"
+        type: "bash"
+        bash_command: "echo 'Cache updated'"
+
+  # Portfolio Monitoring
+  portfolio_monitoring:
+    description: "Monitor positions and update portfolio state"
+    schedule_interval: "*/10 * * * *"  # Every 10 minutes
+    max_active_runs: 1
+    catchup: false
+    tags: ["portfolio", "monitoring", "positions"]
+    
+    tasks:
+      fetch_positions:
+        task_id: "fetch_positions"
+        type: "portfolio_fetch"
+        
+      reconcile_positions:
+        task_id: "reconcile_positions"
+        type: "portfolio_reconcile"
+        
+      calculate_pnl:
+        task_id: "calculate_pnl"
+        type: "portfolio_pnl"
+        
+      check_alerts:
+        task_id: "check_alerts"
+        type: "portfolio_alerts"
+
+# Logging Configuration
+logging:
+  version: 1
+  disable_existing_loggers: false
+  formatters:
+    standard:
+      format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    console:
+      class: logging.StreamHandler
+      level: INFO
+      formatter: standard
+      stream: ext://sys.stdout
+    file:
+      class: logging.handlers.RotatingFileHandler
+      level: INFO
+      formatter: standard
+      filename: /opt/airflow/logs/trading_workflow.log
+      maxBytes: 10485760  # 10MB
+      backupCount: 3
+  loggers:
+    airflow.task:
+      level: INFO
+      handlers: [console, file]
+      propagate: false
+    ibkr_plugin:
+      level: INFO
+      handlers: [console, file]
+      propagate: false
+  root:
+    level: INFO
+    handlers: [console]
+

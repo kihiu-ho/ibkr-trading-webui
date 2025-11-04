@@ -219,8 +219,11 @@ class StrategyExecutor:
         execution_id: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Step 2: Fetch market data from IBKR.
+        Step 2: Fetch market data from IBKR or cache (debug mode).
         """
+        from backend.services.market_data_cache_service import MarketDataCacheService
+        from backend.config.settings import settings
+        
         step_start = time.time()
         step_name = "fetch_market_data"
         
@@ -228,39 +231,73 @@ class StrategyExecutor:
             input_data = {
                 "conid": symbol_data['conid'],
                 "symbol": symbol_data['symbol'],
-                "timeframes": strategy.llm_timeframes or ['1d']
+                "timeframes": strategy.llm_timeframes or ['1d'],
+                "debug_mode": settings.DEBUG_MODE,
+                "cache_enabled": settings.CACHE_ENABLED
             }
             
-            # Fetch market data for each timeframe
-            market_data = {}
-            for timeframe in input_data['timeframes']:
-                data = await self.ibkr.get_historical_data(
-                    conid=symbol_data['conid'],
-                    period=timeframe,
-                    bar="1d" if timeframe == "1d" else "1w"
-                )
-                market_data[timeframe] = data
+            # Use cache service if debug mode or cache enabled
+            if settings.DEBUG_MODE or settings.CACHE_ENABLED:
+                logger.info(f"{'DEBUG MODE' if settings.DEBUG_MODE else 'CACHE MODE'}: Fetching data for {symbol_data['symbol']}")
+                cache_service = MarketDataCacheService(self.db)
+                
+                market_data = {}
+                data_source = "unknown"
+                
+                for timeframe in input_data['timeframes']:
+                    result = await cache_service.get_or_fetch_market_data(
+                        symbol=symbol_data['symbol'],
+                        exchange=symbol_data.get('exchange', 'NASDAQ'),
+                        data_type="daily",
+                        timeframe=timeframe,
+                        period=timeframe if timeframe != "1d" else "1y",
+                        force_refresh=False
+                    )
+                    market_data[timeframe] = result.get("data", {})
+                    data_source = result.get("source", "unknown")
+                    
+                    if settings.DEBUG_MODE:
+                        logger.info(f"✓ Data source: {data_source} | Symbol: {symbol_data['symbol']} | Timeframe: {timeframe}")
+            else:
+                # Original logic: fetch from IBKR directly
+                logger.info(f"LIVE MODE: Fetching data from IBKR for {symbol_data['symbol']}")
+                market_data = {}
+                data_source = "live_api"
+                
+                for timeframe in input_data['timeframes']:
+                    data = await self.ibkr.get_historical_data(
+                        conid=symbol_data['conid'],
+                        period=timeframe,
+                        bar="1d" if timeframe == "1d" else "1w"
+                    )
+                    market_data[timeframe] = data
             
             output_data = {
                 "conid": symbol_data['conid'],
+                "symbol": symbol_data['symbol'],
                 "timeframes": list(market_data.keys()),
-                "data_points": {tf: len(data) for tf, data in market_data.items() if data},
-                "latest_price": market_data.get('1d', [{}])[-1].get('close') if market_data.get('1d') else None
+                "data_points": {tf: len(data.get("data", [])) for tf, data in market_data.items() if data},
+                "latest_price": market_data.get('1d', {}).get('data', [{}])[-1].get('c') if market_data.get('1d') else None,
+                "data_source": data_source
             }
             
-            # Record lineage
+            # Record lineage with data source metadata
             await self.lineage.record_step(
                 execution_id=execution_id,
                 step_name=step_name,
                 step_number=2,
                 input_data=input_data,
                 output_data=output_data,
-                metadata={"strategy_id": strategy.id},
+                metadata={
+                    "strategy_id": strategy.id,
+                    "data_source": data_source,
+                    "debug_mode": settings.DEBUG_MODE
+                },
                 duration_ms=int((time.time() - step_start) * 1000),
                 db=self.db
             )
             
-            logger.debug(f"Market data fetched: {len(market_data)} timeframes")
+            logger.debug(f"Market data fetched: {len(market_data)} timeframes (source: {data_source})")
             return market_data
             
         except Exception as e:
