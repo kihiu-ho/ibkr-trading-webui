@@ -2,9 +2,21 @@ FROM apache/airflow:2.10.5
 
 USER root
 
-# Install additional ML and data processing packages
-RUN python3 -m pip install --quiet --upgrade pip && \
-    python3 -m pip install --quiet \
+# Install system dependencies for ML packages (lightgbm, xgboost, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for ultra-fast package management (10-100x faster than pip)
+RUN python3 -m pip install --no-cache-dir uv
+
+# Switch to airflow user to install packages in their environment
+USER airflow
+
+# Install additional ML and data processing packages using uv
+# uv is much faster and more reliable than pip for large packages
+# Install to airflow user's Python environment (same as Airflow itself)
+RUN uv pip install --no-cache \
     xgboost \
     mlflow \
     kafka-python \
@@ -15,7 +27,8 @@ RUN python3 -m pip install --quiet --upgrade pip && \
     scikit-learn \
     tqdm \
     tqdm-joblib \
-    confluent-kafka 2>/dev/null || echo "Some packages may not be available"
+    confluent-kafka \
+    && echo "✓ Installed ML and data processing packages using uv"
 
 # Patch the hardcoded timeout from 120 seconds to 300 seconds
 # This fixes the "No response from gunicorn master within 120 seconds" error

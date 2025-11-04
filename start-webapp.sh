@@ -1,7 +1,13 @@
 #!/bin/bash
 
 # IBKR Trading WebUI Startup Script
-# Starts all services via Docker Compose: PostgreSQL, Redis, MinIO, IBKR Gateway, Backend, Celery
+# Starts all services via Docker Compose with a single command:
+#   - Core: PostgreSQL (local), Redis, MinIO
+#   - Trading: IBKR Gateway, Backend, Celery Worker/Beat, Flower
+#   - ML/Workflow: MLflow Server, Airflow (webserver, scheduler, init)
+# 
+# Single command: docker compose up -d
+# All services start automatically with proper dependency ordering
 
 set -e  # Exit on error
 
@@ -156,15 +162,14 @@ else
     source "$PROJECT_ROOT/.env"
     set +a  # Disable auto-export
     
-    # Verify DATABASE_URL is set
+    # Verify DATABASE_URL is set (for main backend)
     if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "your_database_url" ]; then
         print_error "DATABASE_URL is not configured in .env!"
         echo ""
         echo "Please set DATABASE_URL in your .env file:"
         echo "  DATABASE_URL=postgresql+psycopg2://user:pass@host/db"
         echo ""
-        echo "Example for Neon database:"
-        echo "  DATABASE_URL=postgresql+psycopg://user:pass@ep-host.aws.neon.tech/dbname?sslmode=require"
+        echo "Note: Airflow and MLflow now use local PostgreSQL (no separate URLs needed)"
         echo ""
         exit 1
     fi
@@ -172,40 +177,7 @@ else
     # Mask password for display
     DB_URL_MASKED=$(echo "$DATABASE_URL" | sed -E 's|(://[^:]+:)[^@]+(@)|\1****\2|')
     print_status "DATABASE_URL loaded: $DB_URL_MASKED"
-    
-    # Check for Airflow and MLflow database URLs if services will be used
-    if [ -z "$AIRFLOW_DATABASE_URL" ] || [ "$AIRFLOW_DATABASE_URL" = "postgresql+psycopg2://user:password@host:port/airflow?sslmode=require" ]; then
-        print_error "AIRFLOW_DATABASE_URL is not configured in .env!"
-        echo ""
-        echo "Airflow requires a database connection. Please either:"
-        echo "  1. Run the quick setup: ./setup-databases-quick.sh"
-        echo "  2. Or manually set AIRFLOW_DATABASE_URL in .env"
-        echo ""
-        echo "Example:"
-        echo "  AIRFLOW_DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/airflow?sslmode=require"
-        echo ""
-        echo "See DATABASE_SETUP_AIRFLOW_MLFLOW.md for full instructions."
-        echo ""
-        exit 1
-    fi
-
-    if [ -z "$MLFLOW_DATABASE_URL" ] || [ "$MLFLOW_DATABASE_URL" = "postgresql+psycopg2://user:password@host:port/mlflow?sslmode=require" ]; then
-        print_error "MLFLOW_DATABASE_URL is not configured in .env!"
-        echo ""
-        echo "MLflow requires a database connection. Please either:"
-        echo "  1. Run the quick setup: ./setup-databases-quick.sh"
-        echo "  2. Or manually set MLFLOW_DATABASE_URL in .env"
-        echo ""
-        echo "Example:"
-        echo "  MLFLOW_DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/mlflow?sslmode=require"
-        echo ""
-        echo "See DATABASE_SETUP_AIRFLOW_MLFLOW.md for full instructions."
-        echo ""
-        exit 1
-    fi
-
-    print_status "AIRFLOW_DATABASE_URL loaded"
-    print_status "MLFLOW_DATABASE_URL loaded"
+    print_info "Airflow and MLflow use local PostgreSQL (configured automatically)"
 fi
 
 # Wait for Docker daemon to be ready
@@ -257,7 +229,7 @@ print_status "Docker Compose: $COMPOSE_CMD"
 # Pull required images
 print_header "Checking Required Images"
 
-IMAGES=("postgres:15-alpine" "redis:7-alpine" "minio/minio:latest")
+IMAGES=("postgres:15" "redis:7-alpine" "minio/minio:latest")
 for image in "${IMAGES[@]}"; do
     if docker image inspect "$image" &> /dev/null; then
         print_status "Image $image exists"
@@ -333,6 +305,9 @@ print_info "Starting Docker Compose services..."
 echo ""
 
 START_UP=$(date +%s)
+# Single command starts all services with proper dependency ordering
+# Docker Compose handles: postgres -> redis/minio -> airflow-init -> webserver/scheduler -> etc.
+print_info "Starting all services with single command: $COMPOSE_CMD up -d"
 $COMPOSE_CMD up -d
 END_UP=$(date +%s)
 STARTUP_TIME=$((END_UP - START_UP))
@@ -351,16 +326,16 @@ else
     print_info "Services are starting with proper dependency ordering..."
 fi
 
-# Note: PostgreSQL is external (not containerized), configured via DATABASE_URL,
-# AIRFLOW_DATABASE_URL, and MLFLOW_DATABASE_URL in .env file
-# Docker Compose handles internal service dependencies automatically
+# Note: Local PostgreSQL is now containerized and starts automatically
+# Docker Compose handles all service dependencies automatically
+# Single command: docker compose up -d starts all services in correct order
 
 if [ "$SKIP_HEALTH_CHECKS" = false ]; then
     # Use Docker Compose's built-in health checking and dependency management
     print_info "Monitoring service startup progress..."
 
     # Wait for core infrastructure services first
-    CORE_SERVICES=("redis" "minio")
+    CORE_SERVICES=("postgres" "redis" "minio")
     for service in "${CORE_SERVICES[@]}"; do
         print_info "Waiting for $service..."
         if $COMPOSE_CMD ps "$service" --format json | jq -e '.Health == "healthy"' &> /dev/null; then
@@ -388,8 +363,24 @@ if [ "$SKIP_HEALTH_CHECKS" = false ]; then
         fi
     done
 
+    # Wait for airflow-init to complete (runs once for database initialization)
+    if $COMPOSE_CMD ps --services | grep -q "airflow-init"; then
+        print_info "Waiting for airflow-init (database initialization)..."
+        for i in {1..60}; do  # Allow up to 2 minutes for init
+            if $COMPOSE_CMD ps "airflow-init" --format json | jq -e '.State == "exited" and .ExitCode == 0' &> /dev/null 2>&1; then
+                print_status "airflow-init completed successfully"
+                break
+            fi
+            if [ $((i % 10)) -eq 0 ]; then
+                printf "."
+            fi
+            sleep 2
+        done
+        echo ""
+    fi
+
     # Wait for application services
-    APP_SERVICES=("ibkr-gateway" "backend")
+    APP_SERVICES=("gateway" "backend")
     for service in "${APP_SERVICES[@]}"; do
         print_info "Waiting for $service..."
         for i in {1..45}; do  # Longer timeout for app services
@@ -475,6 +466,7 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 echo -e "${BLUE}📦 Docker Containers:${NC}"
 echo "  ├─ Core Services:"
+echo "  │  ├─ ibkr-postgres       PostgreSQL database (local)"
 echo "  │  ├─ ibkr-redis          Redis message broker"
 echo "  │  └─ ibkr-minio          MinIO object storage"
 echo "  ├─ Trading Services:"
@@ -490,10 +482,10 @@ if [ "$MLFLOW_ENABLED" = true ]; then
 echo "     ├─ ibkr-mlflow-server  MLflow experiment tracking"
 fi
 if [ "$AIRFLOW_ENABLED" = true ]; then
-echo "     ├─ ibkr-airflow-webserver   Airflow web UI"
-echo "     ├─ ibkr-airflow-scheduler   Airflow scheduler"
-echo "     ├─ ibkr-airflow-worker      Airflow task worker"
-echo "     └─ ibkr-airflow-triggerer   Airflow triggerer"
+echo "     ├─ ibkr-airflow-init       Airflow database init (runs once)"
+echo "     ├─ ibkr-airflow-webserver  Airflow web UI"
+echo "     ├─ ibkr-airflow-scheduler  Airflow scheduler"
+echo "     └─ ibkr-airflow-triggerer  Airflow triggerer (deferrable tasks)"
 fi
 echo ""
 echo -e "${BLUE}🌐 Access Points:${NC}"
@@ -520,7 +512,7 @@ echo "  └── MinIO Console:    http://localhost:9001"
 echo ""
 echo -e "${BLUE}📊 System Status:${NC}"
 echo "  ✓ Backend:            READY (Port 8000)"
-echo "  ✓ Database:           READY (External PostgreSQL)"
+echo "  ✓ PostgreSQL:         READY (Local, Port 5432)"
 echo "  ✓ Redis:              READY (Port 6379)"
 echo "  ✓ MinIO:              READY (Port 9000)"
 if [ "$IBKR_READY" = true ]; then
