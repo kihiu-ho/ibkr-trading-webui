@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}MLflow Experiments{% endblock %}
+{% block page_title %}MLflow Tracking{% endblock %}
+
+{% block content %}
+<div x-data="mlflowExperiments()" x-init="init()">
+    <!-- Status Banner -->
+    <div class="mb-6 bg-white rounded-lg shadow-sm p-4 flex justify-between items-center">
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center">
+                <span class="relative flex h-3 w-3 mr-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" x-show="mlflowHealthy"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3" :class="mlflowHealthy ? 'bg-green-500' : 'bg-red-500'"></span>
+                </span>
+                <span class="text-sm font-medium text-gray-700" x-text="mlflowHealthy ? 'MLflow Connected' : 'MLflow Disconnected'"></span>
+            </div>
+        </div>
+        <button @click="refreshData()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+            <i class="fa fa-refresh mr-2"></i>Refresh
+        </button>
+    </div>
+
+    <!-- Experiments List -->
+    <div class="bg-white rounded-lg shadow-sm mb-8">
+        <div class="p-6 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-900">Experiments</h2>
+        </div>
+        <div class="divide-y divide-gray-200">
+            <template x-for="experiment in experiments" :key="experiment.experiment_id">
+                <div class="p-6 hover:bg-gray-50 cursor-pointer" @click="loadRuns(experiment.experiment_id)">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="text-lg font-medium text-gray-900" x-text="experiment.name"></h3>
+                            <p class="text-sm text-gray-500 mt-1">ID: <span x-text="experiment.experiment_id"></span></p>
+                        </div>
+                        <span class="text-sm text-gray-600">
+                            <i class="fa fa-flask mr-1"></i>
+                            <span x-text="experiment.run_count || 0"></span> runs
+                        </span>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Runs Table -->
+    <div x-show="selectedExperimentId" class="bg-white rounded-lg shadow-sm">
+        <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+            <h2 class="text-xl font-semibold text-gray-900">
+                Experiment Runs: <span x-text="selectedExperimentName"></span>
+            </h2>
+            <button @click="selectedExperimentId = null" class="text-gray-600 hover:text-gray-900">
+                <i class="fa fa-arrow-left mr-2"></i>Back
+            </button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Run Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Start Time</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Metrics</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <template x-for="run in runs" :key="run.info.run_id">
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900" x-text="run.info.run_name || 'Unnamed'"></div>
+                                <div class="text-xs text-gray-500 font-mono" x-text="run.info.run_id.substring(0, 8)"></div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                      :class="{
+                                          'bg-green-100 text-green-800': run.info.status === 'FINISHED',
+                                          'bg-red-100 text-red-800': run.info.status === 'FAILED',
+                                          'bg-yellow-100 text-yellow-800': run.info.status === 'RUNNING'
+                                      }">
+                                    <span x-text="run.info.status"></span>
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <span x-text="formatDate(run.info.start_time)"></span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-500">
+                                <div class="space-y-1">
+                                    <template x-for="(value, key) in run.data.metrics" :key="key">
+                                        <div class="flex justify-between">
+                                            <span class="font-medium" x-text="key"></span>
+                                            <span x-text="value.toFixed(2)"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <button @click="viewRunDetail(run)" class="text-blue-600 hover:text-blue-900">
+                                    <i class="fa fa-eye"></i> Details
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Run Detail Modal -->
+    <div x-show="showRunDetail" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50" x-cloak>
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-lg font-semibold text-gray-900">Run Details</h3>
+                <button @click="showRunDetail = false" class="text-gray-400 hover:text-gray-500">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+            <div class="p-6" x-show="selectedRun">
+                <div class="grid grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-900 mb-2">Parameters</h4>
+                        <div class="space-y-2">
+                            <template x-for="(value, key) in selectedRun?.data.params" :key="key">
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-600" x-text="key"></span>
+                                    <span class="font-medium" x-text="value"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-900 mb-2">Metrics</h4>
+                        <div class="space-y-2">
+                            <template x-for="(value, key) in selectedRun?.data.metrics" :key="key">
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-600" x-text="key"></span>
+                                    <span class="font-medium" x-text="value"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+                
+                <div>
+                    <h4 class="text-sm font-medium text-gray-900 mb-2">Tags</h4>
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="(value, key) in selectedRun?.data.tags" :key="key">
+                            <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                                <span x-text="key + ': ' + value"></span>
+                            </span>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function mlflowExperiments() {
+    return {
+        experiments: [],
+        runs: [],
+        selectedExperimentId: null,
+        selectedExperimentName: '',
+        selectedRun: null,
+        showRunDetail: false,
+        mlflowHealthy: false,
+        
+        async init() {
+            await this.checkHealth();
+            await this.loadExperiments();
+        },
+        
+        async checkHealth() {
+            try {
+                const response = await fetch('/api/mlflow/health');
+                this.mlflowHealthy = response.ok;
+            } catch (error) {
+                this.mlflowHealthy = false;
+            }
+        },
+        
+        async loadExperiments() {
+            try {
+                const response = await fetch('/api/mlflow/experiments/list');
+                const data = await response.json();
+                this.experiments = data.experiments || [];
+            } catch (error) {
+                console.error('Failed to load experiments:', error);
+            }
+        },
+        
+        async loadRuns(experimentId) {
+            try {
+                const response = await fetch('/api/mlflow/runs/search', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        experiment_ids: [experimentId],
+                        max_results: 50
+                    })
+                });
+                const data = await response.json();
+                this.runs = data.runs || [];
+                this.selectedExperimentId = experimentId;
+                const exp = this.experiments.find(e => e.experiment_id === experimentId);
+                this.selectedExperimentName = exp ? exp.name : '';
+            } catch (error) {
+                console.error('Failed to load runs:', error);
+            }
+        },
+        
+        viewRunDetail(run) {
+            this.selectedRun = run;
+            this.showRunDetail = true;
+        },
+        
+        formatDate(timestamp) {
+            if (!timestamp) return 'N/A';
+            return new Date(timestamp).toLocaleString();
+        },
+        
+        async refreshData() {
+            await this.checkHealth();
+            await this.loadExperiments();
+            if (this.selectedExperimentId) {
+                await this.loadRuns(this.selectedExperimentId);
+            }
+        }
+    };
+}
+</script>
+{% endblock %}
+

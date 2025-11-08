@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Airflow Monitoring{% endblock %}
+{% block page_title %}Airflow Workflows{% endblock %}
+
+{% block content %}
+<div x-data="airflowMonitor()" x-init="init()">
+    <!-- Status Banner -->
+    <div class="mb-6">
+        <div class="bg-white rounded-lg shadow-sm p-4 flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center">
+                    <span class="relative flex h-3 w-3 mr-2">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" x-show="airflowHealthy"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3" :class="airflowHealthy ? 'bg-green-500' : 'bg-red-500'"></span>
+                    </span>
+                    <span class="text-sm font-medium text-gray-700" x-text="airflowHealthy ? 'Airflow Connected' : 'Airflow Disconnected'"></span>
+                </div>
+                <div class="text-sm text-gray-500">
+                    Last updated: <span x-text="lastUpdate"></span>
+                </div>
+            </div>
+            <button @click="refreshData()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                <i class="fa fa-refresh mr-2"></i>Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- DAGs Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
+        <template x-for="dag in dags" :key="dag.dag_id">
+            <div class="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900" x-text="dag.dag_id"></h3>
+                        <p class="text-sm text-gray-500 mt-1" x-text="dag.description || 'No description'"></p>
+                    </div>
+                    <span class="px-2 py-1 text-xs font-medium rounded-full" 
+                          :class="dag.is_paused ? 'bg-gray-200 text-gray-700' : 'bg-green-100 text-green-800'">
+                        <span x-text="dag.is_paused ? 'Paused' : 'Active'"></span>
+                    </span>
+                </div>
+
+                <div class="space-y-3">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Last Run:</span>
+                        <span class="font-medium" x-text="formatDate(dag.last_run_start_date)"></span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Next Run:</span>
+                        <span class="font-medium" x-text="formatDate(dag.next_dagrun)"></span>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-gray-200 flex justify-between">
+                    <button @click="viewDAGRuns(dag.dag_id)" 
+                            class="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        <i class="fa fa-list mr-1"></i>View Runs
+                    </button>
+                    <button @click="triggerDAG(dag.dag_id)" 
+                            :disabled="dag.is_paused"
+                            class="text-green-600 hover:text-green-700 text-sm font-medium disabled:text-gray-400">
+                        <i class="fa fa-play mr-1"></i>Trigger
+                    </button>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Recent DAG Runs -->
+    <div class="bg-white rounded-lg shadow-sm">
+        <div class="p-6 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-900">Recent Workflow Runs</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">DAG ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Run ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">State</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start Time</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <template x-for="run in recentRuns" :key="run.dag_run_id">
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" x-text="run.dag_id"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <span class="font-mono text-xs" x-text="run.dag_run_id.substring(0, 30) + '...'"></span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                      :class="{
+                                          'bg-green-100 text-green-800': run.state === 'success',
+                                          'bg-red-100 text-red-800': run.state === 'failed',
+                                          'bg-yellow-100 text-yellow-800': run.state === 'running',
+                                          'bg-gray-100 text-gray-800': run.state === 'queued'
+                                      }">
+                                    <span x-text="run.state"></span>
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(run.start_date)"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="calculateDuration(run.start_date, run.end_date)"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <button @click="viewRunDetails(run.dag_id, run.dag_run_id)" 
+                                        class="text-blue-600 hover:text-blue-900">
+                                    <i class="fa fa-eye"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Run Details Modal -->
+    <div x-show="showModal" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50" x-cloak>
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-lg font-semibold text-gray-900">Run Details</h3>
+                <button @click="showModal = false" class="text-gray-400 hover:text-gray-500">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <template x-if="selectedRun">
+                    <div>
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <div>
+                                <p class="text-sm text-gray-500">DAG ID</p>
+                                <p class="text-lg font-medium" x-text="selectedRun.dag_id"></p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500">State</p>
+                                <span class="inline-flex px-2 py-1 text-sm font-semibold rounded-full"
+                                      :class="{
+                                          'bg-green-100 text-green-800': selectedRun.state === 'success',
+                                          'bg-red-100 text-red-800': selectedRun.state === 'failed',
+                                          'bg-yellow-100 text-yellow-800': selectedRun.state === 'running'
+                                      }">
+                                    <span x-text="selectedRun.state"></span>
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <h4 class="text-md font-semibold mb-3">Task Instances</h4>
+                        <div class="space-y-2">
+                            <template x-for="task in selectedRunTasks" :key="task.task_id">
+                                <div class="p-4 border border-gray-200 rounded-lg">
+                                    <div class="flex justify-between items-center">
+                                        <div>
+                                            <p class="font-medium" x-text="task.task_id"></p>
+                                            <p class="text-sm text-gray-500" x-text="'Duration: ' + calculateDuration(task.start_date, task.end_date)"></p>
+                                        </div>
+                                        <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                                              :class="{
+                                                  'bg-green-100 text-green-800': task.state === 'success',
+                                                  'bg-red-100 text-red-800': task.state === 'failed',
+                                                  'bg-yellow-100 text-yellow-800': task.state === 'running'
+                                              }">
+                                            <span x-text="task.state"></span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function airflowMonitor() {
+    return {
+        dags: [],
+        recentRuns: [],
+        selectedRun: null,
+        selectedRunTasks: [],
+        showModal: false,
+        airflowHealthy: false,
+        lastUpdate: 'Never',
+        
+        async init() {
+            await this.checkHealth();
+            await this.loadDAGs();
+            await this.loadRecentRuns();
+            this.lastUpdate = new Date().toLocaleTimeString();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(() => this.refreshData(), 30000);
+        },
+        
+        async checkHealth() {
+            try {
+                const response = await fetch('/api/airflow/health');
+                this.airflowHealthy = response.ok;
+            } catch (error) {
+                this.airflowHealthy = false;
+            }
+        },
+        
+        async loadDAGs() {
+            try {
+                const response = await fetch('/api/airflow/dags?limit=100');
+                const data = await response.json();
+                this.dags = data.dags || [];
+            } catch (error) {
+                console.error('Failed to load DAGs:', error);
+            }
+        },
+        
+        async loadRecentRuns() {
+            try {
+                // Load runs for all DAGs
+                const runs = [];
+                for (const dag of this.dags.slice(0, 5)) {  // Limit to first 5 DAGs
+                    const response = await fetch(`/api/airflow/dags/${dag.dag_id}/dagRuns?limit=5&order_by=-start_date`);
+                    const data = await response.json();
+                    if (data.dag_runs) {
+                        runs.push(...data.dag_runs.map(r => ({...r, dag_id: dag.dag_id})));
+                    }
+                }
+                this.recentRuns = runs.sort((a, b) => new Date(b.start_date) - new Date(a.start_date)).slice(0, 20);
+            } catch (error) {
+                console.error('Failed to load recent runs:', error);
+            }
+        },
+        
+        async triggerDAG(dagId) {
+            try {
+                const response = await fetch(`/api/airflow/dags/${dagId}/dagRuns`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})
+                });
+                if (response.ok) {
+                    alert('DAG triggered successfully');
+                    await this.refreshData();
+                }
+            } catch (error) {
+                console.error('Failed to trigger DAG:', error);
+                alert('Failed to trigger DAG');
+            }
+        },
+        
+        async viewRunDetails(dagId, runId) {
+            try {
+                const response = await fetch(`/api/airflow/dags/${dagId}/dagRuns/${runId}/taskInstances`);
+                const data = await response.json();
+                this.selectedRun = this.recentRuns.find(r => r.dag_run_id === runId);
+                this.selectedRunTasks = data.task_instances || [];
+                this.showModal = true;
+            } catch (error) {
+                console.error('Failed to load run details:', error);
+            }
+        },
+        
+        async refreshData() {
+            await this.checkHealth();
+            await this.loadDAGs();
+            await this.loadRecentRuns();
+            this.lastUpdate = new Date().toLocaleTimeString();
+        },
+        
+        formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            return new Date(dateString).toLocaleString();
+        },
+        
+        calculateDuration(start, end) {
+            if (!start) return 'N/A';
+            if (!end) return 'Running...';
+            const duration = (new Date(end) - new Date(start)) / 1000;
+            if (duration < 60) return `${Math.round(duration)}s`;
+            return `${Math.round(duration / 60)}m`;
+        },
+        
+        viewDAGRuns(dagId) {
+            window.location.href = `/workflows?dag=${dagId}`;
+        }
+    };
+}
+</script>
+{% endblock %}
+

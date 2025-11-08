@@ -203,8 +203,20 @@ def transform_data(**context):
         if config.debug_mode:
             logger.debug(f"Transformed data sample:\n{df.head(10)}")
         
-        # Store transformed data
-        task_instance.xcom_push(key='transformed_data', value=df.to_dict('records'))
+        # Store transformed data - replace NaN with None for JSON serialization
+        # Convert datetime columns to strings and handle NaN values
+        df_clean = df.copy()
+        
+        # Convert date columns to strings
+        for col in df_clean.columns:
+            if pd.api.types.is_datetime64_any_dtype(df_clean[col]):
+                df_clean[col] = df_clean[col].astype(str)
+        
+        # Replace NaN with None for JSON compatibility
+        df_clean = df_clean.where(pd.notnull(df_clean), None)
+        df_dict = df_clean.to_dict('records')
+        
+        task_instance.xcom_push(key='transformed_data', value=df_dict)
         task_instance.xcom_push(key='transformation_summary', value=transformation_summary)
         
         return transformation_summary
@@ -245,6 +257,9 @@ def log_to_mlflow(**context):
         
         if missing_symbols:
             tags['missing_symbols'] = ','.join(missing_symbols)
+        
+        # Initialize variable to store run_id
+        mlflow_run_id = None
         
         with mlflow_run_context(run_name=run_name, tags=tags) as tracker:
             
@@ -304,9 +319,11 @@ def log_to_mlflow(**context):
                 }
                 tracker.log_debug_info(debug_info)
             
-            logger.info(f"Successfully logged to MLflow. Run ID: {tracker.run_id}")
+            # Capture run_id while tracker is still in scope
+            mlflow_run_id = tracker.run_id
+            logger.info(f"Successfully logged to MLflow. Run ID: {mlflow_run_id}")
         
-        return {'mlflow_run_id': tracker.run_id}
+        return {'mlflow_run_id': mlflow_run_id}
     
     except Exception as e:
         logger.error(f"MLflow logging failed: {e}", exc_info=True)
