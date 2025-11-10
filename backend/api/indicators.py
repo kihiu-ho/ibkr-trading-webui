@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from backend.core.database import get_db
 from backend.models.indicator import Indicator
-from backend.models.strategy import Strategy
+# Strategy model removed - indicators now managed independently
 from backend.schemas.indicator import (
     IndicatorCreate,
     IndicatorUpdate,

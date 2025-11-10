@@ -26,6 +26,15 @@ async def airflow_monitor(request: Request):
     return templates.TemplateResponse("airflow_monitor.html", {"request": request})
 
 
+@router.get("/workflows", response_class=HTMLResponse)
+async def workflows(request: Request, dag: str = None):
+    """Workflow monitoring and execution page."""
+    return templates.TemplateResponse("airflow_monitor.html", {
+        "request": request,
+        "selected_dag": dag
+    })
+
+
 @router.get("/mlflow", response_class=HTMLResponse)
 async def mlflow_experiments(request: Request):
     """MLflow experiment tracking page."""
@@ -40,20 +49,36 @@ async def orders(request: Request):
 
 @router.get("/positions", response_class=HTMLResponse)
 async def positions(request: Request):
-    """Portfolio positions page."""
-    return templates.TemplateResponse("positions.html", {"request": request})
+    """Portfolio positions page (redirects to portfolio)."""
+    return templates.TemplateResponse("portfolio.html", {"request": request})
 
 
-@router.get("/analysis", response_class=HTMLResponse)
-async def analysis(request: Request):
-    """Analysis page."""
-    return templates.TemplateResponse("analysis.html", {"request": request})
+@router.get("/portfolio", response_class=HTMLResponse)
+async def portfolio(request: Request):
+    """Portfolio & Positions overview page (combined)."""
+    return templates.TemplateResponse("portfolio.html", {"request": request})
 
 
-@router.get("/settings", response_class=HTMLResponse)
-async def settings(request: Request):
-    """Settings page."""
-    return templates.TemplateResponse("settings.html", {"request": request})
+@router.get("/artifacts", response_class=HTMLResponse)
+async def artifacts(request: Request):
+    """Model artifacts visualization page."""
+    return templates.TemplateResponse("artifacts.html", {"request": request})
+
+
+@router.get("/artifacts/{artifact_id}", response_class=HTMLResponse)
+async def artifact_detail(request: Request, artifact_id: int):
+    """Artifact detail view page."""
+    return templates.TemplateResponse("artifact_detail.html", {
+        "request": request,
+        "artifact_id": artifact_id
+    })
+
+
+# Settings page removed per user request
+# @router.get("/settings", response_class=HTMLResponse)
+# async def settings(request: Request):
+#     """Settings page."""
+#     return templates.TemplateResponse("settings.html", {"request": request})
 
 
 @router.get("/symbols", response_class=HTMLResponse)
@@ -76,8 +101,10 @@ async def indicators(request: Request):
 
 @router.get("/charts", response_class=HTMLResponse)
 async def charts(request: Request):
-    """Technical analysis charts gallery page."""
-    return templates.TemplateResponse("charts.html", {"request": request})
+    """Technical analysis charts gallery page - redirects to artifacts."""
+    # Charts are now displayed in the artifacts page
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/artifacts?type=chart", status_code=302)
 
 
 @router.get("/orders", response_class=HTMLResponse)

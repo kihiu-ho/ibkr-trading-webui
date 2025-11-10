@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from decimal import Decimal
 
 from backend.models.chart import Chart
-from backend.models.workflow import WorkflowExecution
+# WorkflowExecution model removed - workflows now handled by Airflow
 
 logger = logging.getLogger(__name__)
 

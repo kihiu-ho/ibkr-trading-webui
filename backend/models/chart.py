@@ -51,9 +51,9 @@ class Chart(Base):
     status = Column(String(20), default='active', nullable=False)  # active, archived, deleted
     
     # Relationships
-    execution = relationship("WorkflowExecution", back_populates="charts")
+    # execution = relationship("WorkflowExecution", back_populates="charts")  # Removed - workflows deprecated
     llm_analyses = relationship("LLMAnalysis", back_populates="chart", cascade="all, delete-orphan")
-    signals = relationship("TradingSignal", back_populates="chart")
+    # signals = relationship("TradingSignal", back_populates="chart")  # Removed - TradingSignal model deprecated
     
     def to_dict(self):
         """Convert chart to dictionary."""

@@ -43,6 +43,8 @@ class TradingSignal(BaseModel):
     suggested_entry_price: Optional[Decimal] = Field(None, description="Suggested entry price")
     suggested_stop_loss: Optional[Decimal] = Field(None, description="Suggested stop loss")
     suggested_take_profit: Optional[Decimal] = Field(None, description="Suggested take profit")
+    r_multiple: Optional[Decimal] = Field(None, description="R-multiple (risk/reward ratio)")
+    position_size_percent: Optional[Decimal] = Field(None, description="Suggested position size as percentage")
     
     # Metadata
     timeframe_analyzed: str = Field(..., description="Timeframe analyzed (daily/weekly/both)")
@@ -72,7 +74,9 @@ class TradingSignal(BaseModel):
     
     @property
     def risk_reward_ratio(self) -> Optional[Decimal]:
-        """Calculate risk/reward ratio"""
+        """Calculate risk/reward ratio (returns r_multiple if available, otherwise calculates)"""
+        if self.r_multiple is not None:
+            return self.r_multiple
         if all([self.suggested_entry_price, self.suggested_stop_loss, self.suggested_take_profit]):
             risk = abs(self.suggested_entry_price - self.suggested_stop_loss)
             reward = abs(self.suggested_take_profit - self.suggested_entry_price)

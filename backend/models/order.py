@@ -21,9 +21,9 @@ class Order(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     
-    # Link to strategy and signal
-    strategy_id = Column(Integer, ForeignKey("strategies.id"), nullable=True, index=True)
-    signal_id = Column(Integer, ForeignKey("trading_signals.id"), nullable=True, index=True)
+    # Link to strategy and signal - tables removed, keeping as regular columns
+    strategy_id = Column(Integer, nullable=True, index=True)
+    signal_id = Column(Integer, nullable=True, index=True)
     
     # IBKR order details
     ibkr_order_id = Column(String(100), nullable=True, index=True)  # IBKR's order ID
@@ -59,8 +59,10 @@ class Order(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relationships
-    strategy = relationship("Strategy", foreign_keys=[strategy_id])
-    signal = relationship("TradingSignal", back_populates="orders")
+    # Strategy relationship removed - strategies feature deprecated
+    # strategy = relationship("Strategy", foreign_keys=[strategy_id])
+    # TradingSignal relationship removed - model not available
+    # signal = relationship("TradingSignal", back_populates="orders")
     trades = relationship("Trade", back_populates="order")
     
     def to_dict(self) -> Dict[str, Any]:

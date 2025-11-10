@@ -274,7 +274,8 @@ class ChartGenerator:
                 chart_jpeg=image_data,
                 chart_html=html_data,
                 symbol=symbol,
-                chart_id=0  # Signals don't have a chart_id, use 0
+                chart_id=0,  # Signals don't have a chart_id, use 0
+                timeframe=timeframe
             )
             
             logger.info(f"Chart generated successfully: {chart_url_jpeg}")

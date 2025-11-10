@@ -18,5 +18,5 @@ class AgentConversation(Base):
     tokens_used = Column(Integer)
     
     # Relationships
-    execution = relationship("WorkflowExecution", back_populates="agent_conversations")
+    # execution = relationship("WorkflowExecution", back_populates="agent_conversations")  # Removed - workflows deprecated
 

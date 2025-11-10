@@ -1,86 +1,111 @@
+<!-- Tailwind CSS Sidebar - OpenSpec 2 Compliant -->
 <div class="flex grow flex-col gap-y-5 overflow-y-auto bg-gray-900 px-6 pb-4">
-    <div class="flex h-16 shrink-0 items-center">
-        <h1 class="text-xl font-bold text-white">
-            <i class="fa fa-chart-line text-blue-400"></i>
-            IBKR Trading
-        </h1>
+    <!-- Logo & Brand -->
+    <div class="flex h-16 shrink-0 items-center border-b border-gray-800">
+        <a href="/" class="flex items-center text-white hover:text-gray-300 transition-colors">
+            <i class="fa fa-chart-line text-2xl text-blue-400 mr-3"></i>
+            <h1 class="text-xl font-bold">IBKR Trading</h1>
+        </a>
     </div>
+    
+    <!-- Navigation -->
     <nav class="flex flex-1 flex-col">
         <ul role="list" class="flex flex-1 flex-col gap-y-7">
             <li>
                 <ul role="list" class="-mx-2 space-y-1">
                     <!-- Dashboard -->
                     <li>
-                        <a href="/" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800">
+                        <a href="/" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition-all duration-200">
                             <i class="fa fa-tachometer-alt text-lg w-6"></i>
                             Dashboard
                         </a>
                     </li>
 
-                    <!-- Trading -->
+                    <!-- Trading Section -->
                     <li class="mt-6">
-                        <div class="text-xs font-semibold leading-6 text-gray-400 uppercase tracking-wide px-2">
+                        <div class="text-xs font-semibold leading-6 text-gray-400 uppercase tracking-wide px-2 mb-2">
                             Trading
                         </div>
                     </li>
                     <li>
-                        <a href="/orders" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800">
+                        <a href="/orders" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition-all duration-200">
                             <i class="fa fa-shopping-cart text-lg w-6"></i>
-                            Order Management
+                            Orders
                         </a>
                     </li>
                     <li>
-                        <a href="/positions" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800">
-                            <i class="fa fa-briefcase text-lg w-6"></i>
-                            Portfolio Positions
+                        <a href="/portfolio" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition-all duration-200">
+                            <i class="fa fa-chart-pie text-lg w-6"></i>
+                            Portfolio & Positions
                         </a>
                     </li>
 
-                    <!-- System -->
+                    <!-- ML/Workflow Section -->
                     <li class="mt-6">
-                        <div class="text-xs font-semibold leading-6 text-gray-400 uppercase tracking-wide px-2">
-                            System
+                        <div class="text-xs font-semibold leading-6 text-gray-400 uppercase tracking-wide px-2 mb-2">
+                            ML & Workflows
                         </div>
                     </li>
                     <li>
-                        <a href="/ibkr/login" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800">
-                            <i class="fa fa-key text-lg w-6"></i>
-                            IBKR Authentication
-                        </a>
-                    </li>
-                    <li>
-                        <a href="/portfolio" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800">
-                            <i class="fa fa-briefcase text-lg w-6"></i>
-                            Portfolio
-                        </a>
-                    </li>
-                    <li>
-                        <a href="/analysis" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800">
-                            <i class="fa fa-chart-bar text-lg w-6"></i>
-                            Analysis
-                        </a>
-                    </li>
-                    <li>
-                        <a href="/airflow" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800">
-                            <i class="fa fa-wind text-lg w-6"></i>
-                            Airflow Monitor
-                        </a>
-                    </li>
-                    <li>
-                        <a href="/mlflow" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800">
+                        <a href="/mlflow" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition-all duration-200">
                             <i class="fa fa-flask text-lg w-6"></i>
                             MLflow Tracking
                         </a>
                     </li>
+                    <li>
+                        <a href="/artifacts" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition-all duration-200">
+                            <i class="fa fa-box text-lg w-6"></i>
+                            Model Artifacts
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/airflow" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition-all duration-200">
+                            <i class="fa fa-wind text-lg w-6"></i>
+                            Airflow Monitor
+                        </a>
+                    </li>
+
+                    <!-- System Section -->
+                    <li class="mt-6">
+                        <div class="text-xs font-semibold leading-6 text-gray-400 uppercase tracking-wide px-2 mb-2">
+                            System
+                        </div>
+                    </li>
+                    <li>
+                        <a href="/ibkr/login" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition-all duration-200">
+                            <i class="fa fa-key text-lg w-6"></i>
+                            IBKR Auth
+                        </a>
+                    </li>
                 </ul>
             </li>
+            
+            <!-- Footer Status Indicator -->
             <li class="mt-auto">
-                <a href="/settings" class="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-400 hover:text-white hover:bg-gray-800">
-                    <i class="fa fa-cog text-lg w-6"></i>
-                    Settings
-                </a>
+                <div class="px-2">
+                    <div class="flex items-center gap-x-2 px-3 py-2 bg-green-500 bg-opacity-10 rounded-md border border-green-500 border-opacity-20">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                        </span>
+                        <span class="text-xs text-green-400 font-medium">System Online</span>
+                    </div>
+                </div>
             </li>
         </ul>
     </nav>
 </div>
 
+<script>
+// Highlight active link based on current path
+document.addEventListener('DOMContentLoaded', function() {
+    const currentPath = window.location.pathname;
+    document.querySelectorAll('nav a[href]').forEach(link => {
+        const href = link.getAttribute('href');
+        if (href === currentPath || (href !== '/' && currentPath.startsWith(href))) {
+            link.classList.remove('text-gray-400');
+            link.classList.add('bg-gray-800', 'text-white');
+        }
+    });
+});
+</script>

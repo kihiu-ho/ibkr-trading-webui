@@ -22,8 +22,16 @@ async def list_experiments(request: Request):
     try:
         session = get_mlflow_session()
         url = f"{MLFLOW_API_URL}/experiments/search"
-        response = session.get(url, params=dict(request.query_params))
-        return JSONResponse(content=response.json(), status_code=response.status_code)
+        # Set default max_results if not provided
+        params = dict(request.query_params)
+        if 'max_results' not in params or not params['max_results']:
+            params['max_results'] = '100'
+        response = session.get(url, params=params)
+        if response.status_code == 200:
+            return JSONResponse(content=response.json(), status_code=response.status_code)
+        else:
+            logger.error(f"MLflow API error: {response.status_code} - {response.text}")
+            return JSONResponse(content={'error': f'MLflow API error: {response.status_code}'}, status_code=response.status_code)
     except Exception as e:
         logger.error(f"Failed to list experiments: {e}")
         return JSONResponse(content={'error': str(e)}, status_code=500)

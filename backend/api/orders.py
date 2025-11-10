@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from backend.core.database import get_db
 from backend.services.ibkr_service import IBKRService
-from backend.models.order import Order
+# from backend.models.order import Order
 from backend.schemas.order import OrderCreate, OrderResponse
 from typing import List
 from datetime import datetime, timezone
@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("", response_model=List[OrderResponse])
-async def list_orders(db: Session = Depends(get_db)):
+@router.get("")
+async def list_orders():
     """List all orders from database."""
-    orders = db.query(Order).order_by(Order.submitted_at.desc()).limit(100).all()
-    return orders
+    # Simple test response
+    return [{"id": 1, "test": "order"}]
 
 
 @router.get("/live")

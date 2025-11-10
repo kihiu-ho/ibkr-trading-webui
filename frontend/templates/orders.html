@@ -1,162 +1,297 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orders - IBKR Trading WebUI</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f7fa;
-        }
-        .order-card {
-            transition: transform 0.2s, box-shadow 0.2s;
-            border-left: 4px solid #0d6efd;
-        }
-        .order-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        .status-badge {
-            font-size: 0.85em;
-            padding: 0.4em 0.8em;
-            border-radius: 12px;
-        }
-        .order-details {
-            font-size: 0.9em;
-            color: #6c757d;
-        }
-        .metric-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
-        }
-        .filter-chip {
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .filter-chip:hover {
-            transform: scale(1.05);
-        }
-        .filter-chip.active {
-            background-color: #0d6efd !important;
-            color: white !important;
-        }
-    </style>
-</head>
-<body>
-    <!-- Include sidebar -->
-    {% include "partials/sidebar.html" %}
+{% extends "base.html" %}
 
-    <div class="container-fluid" style="margin-left: 250px; padding: 2rem;">
-        <!-- Header -->
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <h1 class="mb-1"><i class="bi bi-receipt"></i> Orders</h1>
-                <p class="text-muted">Manage and monitor your trading orders</p>
-            </div>
+{% block title %}Orders{% endblock %}
+{% block page_title %}Orders{% endblock %}
+
+{% block content %}
+<div x-data="ordersData()" x-init="init()">
+    <!-- Header Actions -->
+    <div class="flex justify-between items-center mb-6">
+        <div class="flex items-center gap-x-4">
+            <span class="relative flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" x-show="isLive"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3" :class="isLive ? 'bg-green-500' : 'bg-gray-500'"></span>
+            </span>
+            <span class="text-sm text-gray-700" x-text="isLive ? 'Live' : 'Offline'"></span>
+            <span class="text-sm text-gray-500">Last updated: <span x-text="lastUpdate"></span></span>
         </div>
+        <button @click="refreshOrders()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+            <i class="fa fa-refresh mr-2"></i>Refresh
+        </button>
+    </div>
 
-        <!-- Metrics Row -->
-        <div class="row mb-4" id="metricsContainer">
-            <div class="col-md-3">
-                <div class="metric-card">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <p class="mb-0 opacity-75">Total Orders</p>
-                            <h3 class="mb-0" id="totalOrders">0</h3>
-                        </div>
-                        <i class="bi bi-receipt fs-1 opacity-50"></i>
+    <!-- Metrics Cards -->
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+        <!-- Total Orders -->
+        <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-lg overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-receipt text-3xl text-white opacity-75"></i>
                     </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="metric-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <p class="mb-0 opacity-75">Active</p>
-                            <h3 class="mb-0" id="activeOrders">0</h3>
-                        </div>
-                        <i class="bi bi-clock-history fs-1 opacity-50"></i>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="metric-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <p class="mb-0 opacity-75">Filled</p>
-                            <h3 class="mb-0" id="filledOrders">0</h3>
-                        </div>
-                        <i class="bi bi-check-circle fs-1 opacity-50"></i>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="metric-card" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <p class="mb-0 opacity-75">Today</p>
-                            <h3 class="mb-0" id="todayOrders">0</h3>
-                        </div>
-                        <i class="bi bi-calendar-day fs-1 opacity-50"></i>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-white opacity-90 truncate">Total Orders</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-white" x-text="totalOrders">0</div>
+                            </dd>
+                        </dl>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Filters -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <div class="row align-items-center">
-                    <div class="col-md-6">
-                        <div class="btn-group" role="group">
-                            <button type="button" class="btn btn-outline-primary filter-chip active" data-filter="all">
-                                All
-                            </button>
-                            <button type="button" class="btn btn-outline-primary filter-chip" data-filter="pending">
-                                Pending
-                            </button>
-                            <button type="button" class="btn btn-outline-primary filter-chip" data-filter="submitted">
-                                Submitted
-                            </button>
-                            <button type="button" class="btn btn-outline-success filter-chip" data-filter="filled">
-                                Filled
-                            </button>
-                            <button type="button" class="btn btn-outline-danger filter-chip" data-filter="cancelled">
-                                Cancelled
-                            </button>
-                        </div>
+        <!-- Active Orders -->
+        <div class="bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-lg shadow-lg overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-clock text-3xl text-white opacity-75"></i>
                     </div>
-                    <div class="col-md-4">
-                        <input type="text" class="form-control" id="searchInput" placeholder="Search by symbol or strategy...">
-                    </div>
-                    <div class="col-md-2 text-end">
-                        <button class="btn btn-primary" onclick="refreshOrders()">
-                            <i class="bi bi-arrow-clockwise"></i> Refresh
-                        </button>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-white opacity-90 truncate">Active</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-white" x-text="activeOrders">0</div>
+                            </dd>
+                        </dl>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Orders List -->
-        <div id="ordersContainer">
-            <div class="text-center py-5">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
+        <!-- Filled Orders -->
+        <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-lg overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-check-circle text-3xl text-white opacity-75"></i>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-white opacity-90 truncate">Filled</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-white" x-text="filledOrders">0</div>
+                            </dd>
+                        </dl>
+                    </div>
                 </div>
-                <p class="mt-2 text-muted">Loading orders...</p>
+            </div>
+        </div>
+
+        <!-- Today's Orders -->
+        <div class="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg shadow-lg overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-calendar-day text-3xl text-white opacity-75"></i>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-white opacity-90 truncate">Today</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-white" x-text="todayOrders">0</div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/orders.js"></script>
-</body>
-</html>
+    <!-- Filters -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+        <div class="flex flex-col sm:flex-row gap-4">
+            <div class="flex gap-2 flex-wrap">
+                <button @click="filterStatus = 'all'; filterOrders()" 
+                        :class="filterStatus === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition text-sm font-medium">
+                    All
+                </button>
+                <button @click="filterStatus = 'pending'; filterOrders()" 
+                        :class="filterStatus === 'pending' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition text-sm font-medium">
+                    Pending
+                </button>
+                <button @click="filterStatus = 'submitted'; filterOrders()" 
+                        :class="filterStatus === 'submitted' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition text-sm font-medium">
+                    Submitted
+                </button>
+                <button @click="filterStatus = 'filled'; filterOrders()" 
+                        :class="filterStatus === 'filled' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition text-sm font-medium">
+                    Filled
+                </button>
+                <button @click="filterStatus = 'cancelled'; filterOrders()" 
+                        :class="filterStatus === 'cancelled' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition text-sm font-medium">
+                    Cancelled
+                </button>
+            </div>
+            <input type="text" x-model="searchTerm" @input="filterOrders()" 
+                   placeholder="Search by symbol..." 
+                   class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+        </div>
+    </div>
 
+    <!-- Orders Table -->
+    <div class="bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Side</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <template x-for="order in filteredOrders" :key="order.id">
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" x-text="order.ibkr_order_id || order.id"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="order.conid || 'N/A'"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <span :class="order.side === 'BUY' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'" 
+                                          class="px-2 py-1 text-xs font-medium rounded">
+                                        <span x-text="order.side"></span>
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="order.quantity"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatCurrency(order.price || order.filled_price)"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <span :class="{
+                                        'bg-yellow-100 text-yellow-800': order.status === 'pending' || order.status === 'submitted',
+                                        'bg-green-100 text-green-800': order.status === 'filled',
+                                        'bg-red-100 text-red-800': order.status === 'cancelled',
+                                        'bg-gray-100 text-gray-800': !['pending', 'submitted', 'filled', 'cancelled'].includes(order.status)
+                                    }" class="px-2 py-1 text-xs font-medium rounded">
+                                        <span x-text="order.status"></span>
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(order.submitted_at)"></td>
+                            </tr>
+                        </template>
+                        <tr x-show="filteredOrders.length === 0 && !loading">
+                            <td colspan="7" class="px-6 py-4 text-center text-sm text-gray-500">
+                                <i class="fa fa-inbox text-4xl text-gray-300 mb-2"></i>
+                                <p>No orders found</p>
+                            </td>
+                        </tr>
+                        <tr x-show="loading">
+                            <td colspan="7" class="px-6 py-4 text-center text-sm text-gray-500">
+                                <i class="fa fa-spinner fa-spin text-2xl text-blue-500 mb-2"></i>
+                                <p>Loading orders...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function ordersData() {
+    return {
+        isLive: true,
+        lastUpdate: 'Loading...',
+        orders: [],
+        filteredOrders: [],
+        totalOrders: 0,
+        activeOrders: 0,
+        filledOrders: 0,
+        todayOrders: 0,
+        filterStatus: 'all',
+        searchTerm: '',
+        loading: true,
+        
+        async init() {
+            await this.loadOrders();
+            setInterval(() => this.loadOrders(), 30000); // Auto-refresh every 30s
+        },
+        
+        async loadOrders() {
+            this.loading = true;
+            try {
+                const response = await fetch('/api/orders/');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                this.orders = Array.isArray(data) ? data : [];
+                this.updateMetrics();
+                this.filterOrders();
+                this.lastUpdate = new Date().toLocaleTimeString();
+                this.isLive = true;
+            } catch (error) {
+                console.error('Error loading orders:', error);
+                this.isLive = false;
+                this.orders = [];
+                this.filteredOrders = [];
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        updateMetrics() {
+            this.totalOrders = this.orders.length;
+            this.activeOrders = this.orders.filter(o => 
+                ['pending', 'submitted', 'pre_submitted'].includes(o.status)
+            ).length;
+            this.filledOrders = this.orders.filter(o => o.status === 'filled').length;
+            
+            const today = new Date().toDateString();
+            this.todayOrders = this.orders.filter(o => {
+                if (!o.submitted_at) return false;
+                return new Date(o.submitted_at).toDateString() === today;
+            }).length;
+        },
+        
+        filterOrders() {
+            let filtered = this.orders;
+            
+            // Filter by status
+            if (this.filterStatus !== 'all') {
+                filtered = filtered.filter(o => o.status === this.filterStatus);
+            }
+            
+            // Filter by search term
+            if (this.searchTerm) {
+                const term = this.searchTerm.toLowerCase();
+                filtered = filtered.filter(o =>
+                    (o.conid && o.conid.toString().includes(term)) ||
+                    (o.ibkr_order_id && o.ibkr_order_id.toLowerCase().includes(term)) ||
+                    (o.side && o.side.toLowerCase().includes(term))
+                );
+            }
+            
+            this.filteredOrders = filtered;
+        },
+        
+        async refreshOrders() {
+            await this.loadOrders();
+        },
+        
+        formatCurrency(value) {
+            if (!value) return '$0.00';
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD'
+            }).format(value);
+        },
+        
+        formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            return date.toLocaleString();
+        }
+    }
+}
+</script>
+{% endblock %}

@@ -60,6 +60,9 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    # Web server base URL configuration for log URL generation
+    AIRFLOW__WEBSERVER__BASE_URL: 'http://localhost:8080'
+    AIRFLOW__CORE__HOSTNAME_CALLABLE: 'socket:getfqdn'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     # PostgreSQL connection for workflows
     POSTGRES_HOST: postgres
@@ -71,10 +74,20 @@ x-airflow-common: &airflow-common
     MLFLOW_TRACKING_URI: 'http://mlflow-server:5500'
     MLFLOW_S3_ENDPOINT_URL: 'http://minio:9000'
     MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-ibkr-stock-data}
+    # MinIO configuration for chart uploads
+    MINIO_ENDPOINT: "minio:9000"
+    MINIO_PUBLIC_ENDPOINT: "localhost:9000"
+    MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
+    MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
+    MINIO_BUCKET_CHARTS: "${MINIO_BUCKET_CHARTS:-trading-charts}"
+    MINIO_SECURE: "false"
+    # Chart storage directory (shared volume)
+    CHARTS_DIR: "/app/charts"
     # Workflow configuration
     DEBUG_MODE: ${DEBUG_MODE:-false}
     STOCK_SYMBOLS: ${STOCK_SYMBOLS:-TSLA,NVDA}
     ENVIRONMENT: ${ENVIRONMENT:-development}
+    WORKFLOW_SCHEDULE: ${WORKFLOW_SCHEDULE:-}  # e.g., '0 9 * * 1-5' for 9 AM weekdays, '@daily', or leave empty for manual
     # LLM configuration
     LLM_PROVIDER: ${LLM_VISION_PROVIDER:-openai}
     LLM_API_BASE_URL: ${OPENAI_API_BASE:-https://api.openai.com/v1}
@@ -90,6 +103,7 @@ x-airflow-common: &airflow-common
     - ./reference/airflow/models:/app/models
     - ./reference/airflow/config.yaml:/app/config.yaml
     - ./.env:/app/.env
+    - charts_data:/app/charts  # Shared volume for chart files
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     redis:
@@ -244,6 +258,7 @@ services:
       - ./backend:/app/backend:ro
       - ./frontend:/app/frontend:ro
       - ./logs:/app/logs
+      - charts_data:/app/charts  # Shared volume for chart files
     depends_on:
       redis:
         condition: service_healthy
@@ -556,6 +571,9 @@ volumes:
     driver: local
   postgres_data:
     name: ibkr_postgres_data
+    driver: local
+  charts_data:
+    name: ibkr_charts_data
     driver: local
   minio_data:
     name: ibkr_minio_data

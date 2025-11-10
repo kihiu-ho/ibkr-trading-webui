@@ -3,8 +3,20 @@ FROM apache/airflow:2.10.5
 USER root
 
 # Install system dependencies for ML packages (lightgbm, xgboost, etc.)
+# Also install .NET 8.0 runtime for stock-indicators library using official install script
+# Note: stock-indicators requires .NET runtime to work
+# Install Chromium for Kaleido chart generation (Plotly image export)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
+    wget \
+    ca-certificates \
+    chromium \
+    chromium-driver \
+    && wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh \
+    && chmod +x dotnet-install.sh \
+    && ./dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet \
+    && ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet \
+    && rm dotnet-install.sh \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for ultra-fast package management (10-100x faster than pip)
@@ -32,16 +44,25 @@ RUN uv pip install --no-cache \
     numpy \
     matplotlib \
     mplfinance \
+    plotly \
+    kaleido \
+    stock-indicators \
+    pandas-ta \
     pydantic \
     openai \
     anthropic \
     ib-insync \
+    minio \
     && echo "✓ Installed ML and data processing packages using uv"
 
 # Patch the hardcoded timeout from 120 seconds to 300 seconds
 # This fixes the "No response from gunicorn master within 120 seconds" error
 RUN find /home/airflow/.local/lib -name "command.py" -path "*/airflow/www/*" -exec sed -i 's/\b120\b/300/g' {} \; && \
     echo "✓ Patched Airflow webserver timeout from 120 to 300 seconds"
+
+# Set Chromium path for Kaleido (chart generation)
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
 USER airflow
 

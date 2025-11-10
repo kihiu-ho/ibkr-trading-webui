@@ -56,10 +56,10 @@ class LLMAnalysis(Base):
     error_message = Column(Text, nullable=True)
     
     # Relationships
-    execution = relationship("WorkflowExecution", back_populates="llm_analyses")
+    # execution = relationship("WorkflowExecution", back_populates="llm_analyses")  # Removed - workflows deprecated
     chart = relationship("Chart", back_populates="llm_analyses")
-    strategy = relationship("Strategy")
-    signals = relationship("TradingSignal", back_populates="llm_analysis")
+    # strategy = relationship("Strategy")  # Removed - strategies feature deprecated
+    # signals = relationship("TradingSignal", back_populates="llm_analysis")  # Removed - TradingSignal model deprecated
     
     def to_dict(self):
         """Convert LLM analysis to dictionary."""

@@ -45,7 +45,7 @@ class ChartResult(BaseModel):
     
     symbol: str = Field(..., description="Stock symbol")
     timeframe: Timeframe = Field(..., description="Chart timeframe")
-    file_path: str = Field(..., description="Path to generated PNG file")
+    file_path: str = Field(..., description="Path to generated JPEG file")
     width: int = Field(..., description="Chart width")
     height: int = Field(..., description="Chart height")
     periods_shown: int = Field(..., description="Number of periods in the chart")
@@ -54,8 +54,8 @@ class ChartResult(BaseModel):
     @property
     def file_size_mb(self) -> float:
         """Get approximate file size in MB (estimate)"""
-        # Rough estimate: PNG at 1920x1080 is ~0.5-2MB
-        return (self.width * self.height) / (1920 * 1080) * 1.5
+        # Rough estimate: JPEG at 1920x1080 is ~0.3-1MB
+        return (self.width * self.height) / (1920 * 1080) * 0.8
     
     class Config:
         use_enum_values = True

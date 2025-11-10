@@ -49,5 +49,5 @@ class IndicatorChart(Base):
     expires_at = Column(DateTime(timezone=True))  # Auto-delete date (30 days default)
     
     # Relationships
-    strategy = relationship("Strategy")
+    # strategy = relationship("Strategy")  # Removed - strategies feature deprecated
 

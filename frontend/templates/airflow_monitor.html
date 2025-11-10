@@ -29,15 +29,22 @@
     <!-- DAGs Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
         <template x-for="dag in dags" :key="dag.dag_id">
-            <div class="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition">
+            <div class="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition" :data-dag-id="dag.dag_id">
                 <div class="flex justify-between items-start mb-4">
                     <div>
                         <h3 class="text-lg font-semibold text-gray-900" x-text="dag.dag_id"></h3>
                         <p class="text-sm text-gray-500 mt-1" x-text="dag.description || 'No description'"></p>
+                        <p x-show="dag.has_import_errors" class="text-xs text-red-600 mt-1">
+                            <i class="fa fa-exclamation-triangle"></i> Import errors
+                        </p>
                     </div>
                     <span class="px-2 py-1 text-xs font-medium rounded-full" 
-                          :class="dag.is_paused ? 'bg-gray-200 text-gray-700' : 'bg-green-100 text-green-800'">
-                        <span x-text="dag.is_paused ? 'Paused' : 'Active'"></span>
+                          :class="{
+                              'bg-gray-200 text-gray-700': dag.is_paused,
+                              'bg-red-100 text-red-800': dag.has_import_errors && !dag.is_paused,
+                              'bg-green-100 text-green-800': !dag.is_paused && !dag.has_import_errors
+                          }">
+                        <span x-text="dag.has_import_errors ? 'Error' : (dag.is_paused ? 'Paused' : 'Active')"></span>
                     </span>
                 </div>
 
@@ -52,16 +59,25 @@
                     </div>
                 </div>
 
-                <div class="mt-4 pt-4 border-t border-gray-200 flex justify-between">
+                <div class="mt-4 pt-4 border-t border-gray-200 flex justify-between items-center">
                     <button @click="viewDAGRuns(dag.dag_id)" 
                             class="text-blue-600 hover:text-blue-700 text-sm font-medium">
                         <i class="fa fa-list mr-1"></i>View Runs
                     </button>
-                    <button @click="triggerDAG(dag.dag_id)" 
-                            :disabled="dag.is_paused"
-                            class="text-green-600 hover:text-green-700 text-sm font-medium disabled:text-gray-400">
-                        <i class="fa fa-play mr-1"></i>Trigger
-                    </button>
+                    <div class="flex items-center space-x-2">
+                        <button @click="triggerDAG(dag.dag_id, $event)" 
+                                :disabled="dag.is_paused || dag.has_import_errors"
+                                class="text-green-600 hover:text-green-700 text-sm font-medium disabled:text-gray-400 disabled:cursor-not-allowed px-3 py-1 rounded transition"
+                                :title="dag.is_paused ? 'Cannot trigger: DAG is paused' : (dag.has_import_errors ? 'Cannot trigger: DAG has import errors' : 'Trigger workflow execution')">
+                            <i class="fa fa-play mr-1"></i>Trigger
+                        </button>
+                        <span x-show="dag.is_paused" class="text-xs text-gray-500" title="DAG is paused">
+                            <i class="fa fa-pause-circle"></i>
+                        </span>
+                        <span x-show="dag.has_import_errors" class="text-xs text-red-500" title="DAG has import errors">
+                            <i class="fa fa-exclamation-triangle"></i>
+                        </span>
+                    </div>
                 </div>
             </div>
         </template>
@@ -104,11 +120,19 @@
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(run.start_date)"></td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="calculateDuration(run.start_date, run.end_date)"></td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                <button @click="viewRunDetails(run.dag_id, run.dag_run_id)" 
-                                        class="text-blue-600 hover:text-blue-900">
-                                    <i class="fa fa-eye"></i>
-                                </button>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" :data-run-id="run.dag_run_id">
+                                <div class="flex space-x-2">
+                                    <button @click="viewRunDetails(run.dag_id, run.dag_run_id)" 
+                                            class="text-blue-600 hover:text-blue-900" title="View Details">
+                                        <i class="fa fa-eye"></i>
+                                    </button>
+                                    <button @click="triggerDAG(run.dag_id, $event)" 
+                                            class="text-green-600 hover:text-green-900 disabled:text-gray-400 disabled:cursor-not-allowed" 
+                                            title="Trigger DAG"
+                                            :disabled="run.state === 'running'">
+                                        <i class="fa fa-play"></i>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     </template>
@@ -117,59 +141,474 @@
         </div>
     </div>
 
-    <!-- Run Details Modal -->
+    <!-- Enhanced Run Details Modal -->
     <div x-show="showModal" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50" x-cloak>
-        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[95vh] overflow-y-auto">
             <div class="p-6 border-b border-gray-200 flex justify-between items-center">
-                <h3 class="text-lg font-semibold text-gray-900">Run Details</h3>
+                <div class="flex items-center space-x-4">
+                    <h3 class="text-xl font-semibold text-gray-900">Workflow Run Details</h3>
+                    <span class="px-3 py-1 text-sm font-medium rounded-full"
+                          :class="{
+                              'bg-green-100 text-green-800': selectedRun && selectedRun.state === 'success',
+                              'bg-red-100 text-red-800': selectedRun && selectedRun.state === 'failed',
+                              'bg-yellow-100 text-yellow-800': selectedRun && selectedRun.state === 'running',
+                              'bg-blue-100 text-blue-800': selectedRun && selectedRun.state === 'queued'
+                          }">
+                        <span x-text="selectedRun ? selectedRun.state : ''"></span>
+                    </span>
+                </div>
                 <button @click="showModal = false" class="text-gray-400 hover:text-gray-500">
-                    <i class="fa fa-times"></i>
+                    <i class="fa fa-times text-xl"></i>
                 </button>
             </div>
-            <div class="p-6">
-                <template x-if="selectedRun">
+            <div class="p-6" x-show="selectedRun">
+                <!-- Run Overview -->
+                <div class="bg-gray-50 rounded-lg p-6 mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                            <p class="text-sm text-gray-500 font-medium">DAG ID</p>
+                            <p class="text-lg font-semibold text-gray-900" x-text="selectedRun.dag_id"></p>
+                        </div>
                     <div>
-                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <p class="text-sm text-gray-500 font-medium">Run ID</p>
+                            <p class="text-sm font-mono text-gray-700" x-text="selectedRun.dag_run_id"></p>
+                        </div>
                             <div>
-                                <p class="text-sm text-gray-500">DAG ID</p>
-                                <p class="text-lg font-medium" x-text="selectedRun.dag_id"></p>
+                            <p class="text-sm text-gray-500 font-medium">Started</p>
+                            <p class="text-sm font-medium text-gray-900" x-text="formatDate(selectedRun.start_date)"></p>
                             </div>
                             <div>
-                                <p class="text-sm text-gray-500">State</p>
-                                <span class="inline-flex px-2 py-1 text-sm font-semibold rounded-full"
-                                      :class="{
-                                          'bg-green-100 text-green-800': selectedRun.state === 'success',
-                                          'bg-red-100 text-red-800': selectedRun.state === 'failed',
-                                          'bg-yellow-100 text-yellow-800': selectedRun.state === 'running'
-                                      }">
-                                    <span x-text="selectedRun.state"></span>
+                            <p class="text-sm text-gray-500 font-medium">Duration</p>
+                            <p class="text-sm font-medium text-gray-900" x-text="calculateDuration(selectedRun.start_date, selectedRun.end_date)"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Task Flow Visualization -->
+                <div class="mb-6">
+                    <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                        <i class="fa fa-project-diagram mr-2 text-blue-500"></i>
+                        Task Execution Flow
+                    </h4>
+                    <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <div class="p-4 border-b border-gray-200 flex justify-between items-center">
+                            <span class="text-sm font-medium text-gray-700">Task Status Overview</span>
+                            <div class="flex space-x-4 text-sm">
+                                <span class="flex items-center">
+                                    <span class="w-3 h-3 bg-green-500 rounded-full mr-2"></span>
+                                    Success: <span x-text="taskStats.success" class="font-medium ml-1"></span>
+                                </span>
+                                <span class="flex items-center">
+                                    <span class="w-3 h-3 bg-yellow-500 rounded-full mr-2"></span>
+                                    Running: <span x-text="taskStats.running" class="font-medium ml-1"></span>
+                                </span>
+                                <span class="flex items-center">
+                                    <span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span>
+                                    Failed: <span x-text="taskStats.failed" class="font-medium ml-1"></span>
                                 </span>
                             </div>
                         </div>
-                        
-                        <h4 class="text-md font-semibold mb-3">Task Instances</h4>
-                        <div class="space-y-2">
+                        <div class="p-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             <template x-for="task in selectedRunTasks" :key="task.task_id">
-                                <div class="p-4 border border-gray-200 rounded-lg">
-                                    <div class="flex justify-between items-center">
-                                        <div>
-                                            <p class="font-medium" x-text="task.task_id"></p>
-                                            <p class="text-sm text-gray-500" x-text="'Duration: ' + calculateDuration(task.start_date, task.end_date)"></p>
+                                    <div class="relative">
+                                        <div class="p-4 border border-gray-200 rounded-lg transition-all hover:shadow-md"
+                                             :class="{
+                                                 'border-green-300 bg-green-50': task.state === 'success',
+                                                 'border-yellow-300 bg-yellow-50': task.state === 'running',
+                                                 'border-red-300 bg-red-50': task.state === 'failed',
+                                                 'border-gray-300 bg-gray-50': task.state === 'queued'
+                                             }">
+                                            <div class="flex justify-between items-start mb-2">
+                                                <div class="flex-1">
+                                                    <h5 class="font-medium text-gray-900" x-text="task.task_id"></h5>
+                                                    <p class="text-xs text-gray-500" x-text="task.operator || task.task_type || 'Task'"></p>
+                                                </div>
+                                                <span class="px-2 py-1 text-xs font-semibold rounded-full flex-shrink-0"
+                                                      :class="{
+                                                          'bg-green-100 text-green-800': task.state === 'success',
+                                                          'bg-yellow-100 text-yellow-800': task.state === 'running',
+                                                          'bg-red-100 text-red-800': task.state === 'failed',
+                                                          'bg-gray-100 text-gray-800': task.state === 'queued'
+                                                      }">
+                                                    <span x-text="task.state"></span>
+                                                </span>
+                                            </div>
+                                            <div class="space-y-1 text-xs text-gray-600">
+                                                <div class="flex justify-between">
+                                                    <span>Duration:</span>
+                                                    <span x-text="calculateDuration(task.start_date, task.end_date)"></span>
+                                                </div>
+                                                <div class="flex justify-between" x-show="task.try_number > 1">
+                                                    <span>Retries:</span>
+                                                    <span x-text="task.try_number - 1"></span>
+                                                </div>
+                                            </div>
+                                            <div class="mt-3 flex space-x-2">
+                                                <button @click="viewTaskLogs(task)" class="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                                                    <i class="fa fa-file-text mr-1"></i>Logs
+                                                </button>
+                                                <button @click="viewTaskDetails(task)" class="text-xs text-gray-600 hover:text-gray-800 font-medium">
+                                                    <i class="fa fa-info-circle mr-1"></i>Details
+                                                </button>
+                                            </div>
                                         </div>
+                                        <!-- Connection line (simplified) -->
+                                        <div class="absolute -right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-0.5 bg-gray-300" x-show="$index < selectedRunTasks.length - 1"></div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Task Details Table -->
+                <div class="mb-6">
+                    <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                        <i class="fa fa-table mr-2 text-green-500"></i>
+                        Task Details
+                    </h4>
+                    <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task ID</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">State</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start Time</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Retries</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <template x-for="task in selectedRunTasks" :key="task.task_id">
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900" x-text="task.task_id"></td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500" x-text="task.operator || task.task_type || 'Task'"></td>
+                                        <td class="px-4 py-3 whitespace-nowrap">
                                         <span class="px-2 py-1 text-xs font-semibold rounded-full"
                                               :class="{
                                                   'bg-green-100 text-green-800': task.state === 'success',
+                                                      'bg-yellow-100 text-yellow-800': task.state === 'running',
                                                   'bg-red-100 text-red-800': task.state === 'failed',
-                                                  'bg-yellow-100 text-yellow-800': task.state === 'running'
+                                                      'bg-gray-100 text-gray-800': task.state === 'queued'
                                               }">
                                             <span x-text="task.state"></span>
                                         </span>
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(task.start_date)"></td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500" x-text="calculateDuration(task.start_date, task.end_date)"></td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500" x-text="task.try_number ? task.try_number - 1 : 0"></td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                                            <div class="flex space-x-2">
+                                                <button @click="viewTaskLogs(task)" class="text-blue-600 hover:text-blue-800">
+                                                    <i class="fa fa-file-text"></i>
+                                                </button>
+                                                <button @click="viewTaskDetails(task)" class="text-gray-600 hover:text-gray-800">
+                                                    <i class="fa fa-info-circle"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="mb-6" x-show="getArtifactCount('chart') > 0">
+                    <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                        <i class="fa fa-chart-line mr-2 text-blue-500"></i>
+                        Generated Charts
+                    </h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <template x-for="artifact in runArtifacts.filter(a => getArtifactType(a) === 'chart')" :key="artifact.id">
+                            <div class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition cursor-pointer"
+                                 @click="window.location.href = '/artifacts/' + artifact.id">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div>
+                                        <h5 class="font-medium text-gray-900" x-text="artifact.name"></h5>
+                                        <p class="text-sm text-gray-500" x-show="artifact.symbol">
+                                            <i class="fa fa-tag mr-1"></i>
+                                            <span x-text="artifact.symbol"></span>
+                                            <span x-show="artifact.metadata && artifact.metadata.timeframe">
+                                                - <span x-text="artifact.metadata.timeframe"></span>
+                                            </span>
+                                        </p>
+                                    </div>
+                                    <span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                                        Chart
+                                    </span>
+                                </div>
+                                <div class="text-xs text-gray-400" x-show="artifact.metadata && artifact.metadata.indicators">
+                                    <span x-text="artifact.metadata.indicators.join(', ')"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- LLM Analysis Section -->
+                <div class="mb-6" x-show="getArtifactCount('llm') > 0">
+                    <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                        <i class="fa fa-brain mr-2 text-purple-500"></i>
+                        LLM Analysis & Trading Signals
+                    </h4>
+                    <div class="grid grid-cols-1 gap-4">
+                        <template x-for="artifact in runArtifacts.filter(a => getArtifactType(a) === 'llm')" :key="artifact.id">
+                            <div class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition cursor-pointer"
+                                 @click="window.location.href = '/artifacts/' + artifact.id">
+                                <div class="flex justify-between items-start mb-3">
+                                    <div class="flex-1">
+                                        <h5 class="font-medium text-gray-900 mb-1" x-text="artifact.name"></h5>
+                                        <p class="text-sm text-gray-500" x-show="artifact.symbol">
+                                            <i class="fa fa-tag mr-1"></i>
+                                            <span x-text="artifact.symbol"></span>
+                                        </p>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span x-show="artifact.signal_data && artifact.signal_data.action"
+                                              :class="{
+                                                  'bg-green-100 text-green-800': artifact.signal_data.action === 'BUY',
+                                                  'bg-red-100 text-red-800': artifact.signal_data.action === 'SELL',
+                                                  'bg-gray-100 text-gray-800': artifact.signal_data.action === 'HOLD'
+                                              }"
+                                              class="px-3 py-1 text-sm font-semibold rounded-full">
+                                            <span x-text="artifact.signal_data.action"></span>
+                                        </span>
+                                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-800">
+                                            LLM
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="space-y-2" x-show="artifact.signal_data">
+                                    <div class="flex items-center gap-4 text-sm">
+                                        <span class="text-gray-600">
+                                            Confidence: 
+                                            <span class="font-semibold" 
+                                                  :class="{
+                                                      'text-green-600': artifact.signal_data.confidence === 'HIGH',
+                                                      'text-yellow-600': artifact.signal_data.confidence === 'MEDIUM',
+                                                      'text-red-600': artifact.signal_data.confidence === 'LOW'
+                                                  }"
+                                                  x-text="artifact.signal_data.confidence"></span>
+                                        </span>
+                                        <span class="text-gray-600" x-show="artifact.signal_data.confidence_score">
+                                            Score: <span class="font-semibold" x-text="Math.round(artifact.signal_data.confidence_score) + '%'"></span>
+                                        </span>
+                                    </div>
+                                    <p class="text-sm text-gray-600 line-clamp-2" 
+                                       x-show="artifact.signal_data.reasoning"
+                                       x-text="artifact.signal_data.reasoning"></p>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Related Artifacts & MLflow -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- MLflow Integration -->
+                    <div class="bg-white border border-gray-200 rounded-lg p-6">
+                        <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                            <i class="fa fa-flask mr-2 text-pink-500"></i>
+                            MLflow Runs
+                        </h4>
+                        <div x-show="mlflowRuns.length === 0" class="text-center py-8 text-gray-500">
+                            <i class="fa fa-flask text-4xl text-gray-300 mb-2"></i>
+                            <p>No MLflow runs found for this workflow</p>
+                        </div>
+                        <div class="space-y-3" x-show="mlflowRuns.length > 0">
+                            <template x-for="run in mlflowRuns" :key="run.run_id">
+                                <div class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                                    <div class="flex justify-between items-start">
+                                        <div class="flex-1">
+                                            <h5 class="font-medium text-gray-900" x-text="run.run_name || 'MLflow Run'"></h5>
+                                            <p class="text-sm text-gray-500" x-text="run.experiment_name || 'Experiment'"></p>
+                                            <p class="text-xs text-gray-400" x-text="formatDate(run.start_time)"></p>
+                                        </div>
+                                        <a :href="'/mlflow?run=' + run.run_id" class="text-pink-600 hover:text-pink-800 text-sm font-medium">
+                                            <i class="fa fa-external-link-alt mr-1"></i>View
+                                        </a>
                                     </div>
                                 </div>
                             </template>
                         </div>
                     </div>
-                </template>
+
+                    <!-- Artifacts -->
+                    <div class="bg-white border border-gray-200 rounded-lg p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h4 class="text-lg font-semibold text-gray-900 flex items-center">
+                                <i class="fa fa-box mr-2 text-purple-500"></i>
+                                Generated Artifacts
+                            </h4>
+                            <button @click="loadArtifactsForRun(selectedRun.dag_run_id)" 
+                                    class="text-sm text-blue-600 hover:text-blue-800">
+                                <i class="fa fa-refresh mr-1"></i>Refresh
+                            </button>
+                        </div>
+                        <div x-show="runArtifacts.length === 0" class="text-center py-8 text-gray-500">
+                            <i class="fa fa-box text-4xl text-gray-300 mb-2"></i>
+                            <p>No artifacts generated for this run</p>
+                            <p class="text-xs text-gray-400 mt-1">Artifacts are created as tasks complete</p>
+                        </div>
+                        <div x-show="loadingArtifacts" class="text-center py-8">
+                            <i class="fa fa-spinner fa-spin text-2xl text-gray-400"></i>
+                            <p class="text-sm text-gray-500 mt-2">Loading artifacts...</p>
+                        </div>
+                        <div class="space-y-4" x-show="runArtifacts.length > 0 && !loadingArtifacts">
+                            <!-- Artifact Summary -->
+                            <div class="bg-gray-50 rounded-lg p-3 mb-4">
+                                <div class="flex flex-wrap gap-4 text-sm">
+                                    <span class="text-gray-600">
+                                        <span class="font-semibold" x-text="runArtifacts.length"></span> artifacts:
+                                    </span>
+                                    <span class="text-purple-600" x-text="getArtifactCount('llm') + ' LLM'"></span>
+                                    <span class="text-blue-600" x-text="getArtifactCount('chart') + ' Charts'"></span>
+                                    <span class="text-yellow-600" x-text="getArtifactCount('signal') + ' Signals'"></span>
+                                    <span class="text-green-600" x-text="getArtifactCount('order') + ' Orders'"></span>
+                                    <span class="text-orange-600" x-text="getArtifactCount('trade') + ' Trades'"></span>
+                                    <span class="text-teal-600" x-text="getArtifactCount('portfolio') + ' Portfolio'"></span>
+                                </div>
+                            </div>
+                            
+                            <!-- Group artifacts by symbol, then by type -->
+                            <template x-for="(symbolGroup, symbol) in getArtifactsBySymbol()" :key="symbol">
+                                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                                    <!-- Symbol Header -->
+                                    <div class="bg-gray-100 px-4 py-2 border-b border-gray-200">
+                                        <h4 class="font-semibold text-gray-900 flex items-center">
+                                            <i class="fa fa-chart-line mr-2 text-blue-600"></i>
+                                            <span x-text="symbol || 'General'"></span>
+                                            <span class="ml-2 text-sm font-normal text-gray-600" x-text="'(' + Object.keys(symbolGroup).reduce((sum, type) => sum + symbolGroup[type].length, 0) + ' artifacts)'"></span>
+                                        </h4>
+                                    </div>
+                                    
+                                    <!-- Artifacts grouped by type -->
+                                    <div class="p-4 space-y-4">
+                                        <template x-for="(typeGroup, type) in symbolGroup" :key="type">
+                                            <div>
+                                                <!-- Type Header -->
+                                                <div class="mb-2 flex items-center">
+                                                    <span :class="getArtifactBadgeClass({type: type})" 
+                                                          class="px-2 py-1 rounded text-xs font-medium uppercase">
+                                                        <i :class="getArtifactIcon({type: type}) + ' mr-1'"></i>
+                                                        <span x-text="getArtifactTypeLabel({type: type})"></span>
+                                                    </span>
+                                                    <span class="ml-2 text-xs text-gray-500" x-text="'(' + typeGroup.length + ')'"></span>
+                                                </div>
+                                                
+                                                <!-- Artifacts of this type -->
+                                                <div class="space-y-2 ml-4">
+                                                    <template x-for="artifact in typeGroup" :key="artifact.id">
+                                                        <div class="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition cursor-pointer"
+                                                             @click="window.location.href = '/api/artifacts/' + artifact.id">
+                                                            <div class="flex justify-between items-start">
+                                                                <div class="flex-1">
+                                                                    <h5 class="font-medium text-gray-900 text-sm" x-text="artifact.name"></h5>
+                                                                    <p class="text-xs text-gray-500 mt-1" x-show="artifact.step_name">
+                                                                        <i class="fa fa-tasks mr-1"></i>
+                                                                        <span x-text="artifact.step_name"></span>
+                                                                    </p>
+                                                                    <!-- Show order/trade/portfolio specific info -->
+                                                                    <template x-if="getArtifactType(artifact) === 'order' && artifact.signal_data">
+                                                                        <p class="text-xs text-gray-600 mt-1">
+                                                                            <span x-text="artifact.signal_data.side"></span> 
+                                                                            <span x-text="artifact.signal_data.quantity"></span> @ 
+                                                                            <span x-text="artifact.signal_data.price ? '$' + artifact.signal_data.price : 'N/A'"></span>
+                                                                        </p>
+                                                                    </template>
+                                                                    <template x-if="getArtifactType(artifact) === 'trade' && artifact.signal_data">
+                                                                        <p class="text-xs text-gray-600 mt-1">
+                                                                            <span x-text="artifact.signal_data.quantity"></span> @ 
+                                                                            <span x-text="'$' + artifact.signal_data.price"></span>
+                                                                        </p>
+                                                                    </template>
+                                                                    <template x-if="getArtifactType(artifact) === 'portfolio' && artifact.signal_data">
+                                                                        <p class="text-xs text-gray-600 mt-1">
+                                                                            <span x-text="artifact.signal_data.position_count"></span> positions, 
+                                                                            <span x-text="'$' + artifact.signal_data.total_value.toFixed(2)"></span>
+                                                                        </p>
+                                                                    </template>
+                                                                    <p class="text-xs text-gray-400 mt-1" x-text="formatDate(artifact.created_at)"></p>
+                                                                </div>
+                                                                <div class="text-purple-600 hover:text-purple-800 text-sm font-medium ml-2">
+                                                                    <i class="fa fa-external-link-alt"></i>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Logs Modal -->
+    <div x-show="showLogsModal" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50" x-cloak @click.self="showLogsModal = false">
+        <div class="bg-white rounded-lg shadow-xl max-w-5xl w-full mx-4 max-h-[90vh] flex flex-col">
+            <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                <div class="flex items-center space-x-4">
+                    <h3 class="text-xl font-semibold text-gray-900">Task Logs</h3>
+                    <span x-show="currentLogTask" class="text-sm text-gray-600">
+                        <span x-text="currentLogTask ? currentLogTask.task_id : ''"></span>
+                        <span class="text-gray-400"> | </span>
+                        <span x-text="currentLogTask ? (currentLogTask.state || 'unknown') : ''"></span>
+                    </span>
+                </div>
+                <button @click="showLogsModal = false" class="text-gray-400 hover:text-gray-500">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6 flex-1 overflow-y-auto">
+                <!-- Loading State -->
+                <div x-show="logsLoading" class="text-center py-8">
+                    <i class="fa fa-spinner fa-spin text-2xl text-gray-400"></i>
+                    <p class="text-sm text-gray-500 mt-2">Loading logs...</p>
+                </div>
+                
+                <!-- Error State -->
+                <div x-show="logsError && !logsLoading" class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                    <div class="flex items-center">
+                        <i class="fa fa-exclamation-circle text-red-500 mr-2"></i>
+                        <p class="text-sm text-red-800" x-text="logsError"></p>
+                    </div>
+                    <button @click="viewTaskLogs(currentLogTask)" class="mt-2 text-sm text-red-600 hover:text-red-800">
+                        <i class="fa fa-refresh mr-1"></i>Retry
+                    </button>
+                </div>
+                
+                <!-- Logs Content -->
+                <div x-show="!logsLoading && !logsError && logsContent" class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                    <pre class="text-sm text-gray-100 font-mono whitespace-pre-wrap break-words" x-text="logsContent"></pre>
+                </div>
+                
+                <!-- Empty State -->
+                <div x-show="!logsLoading && !logsError && !logsContent" class="text-center py-8 text-gray-500">
+                    <i class="fa fa-file-text text-4xl text-gray-300 mb-2"></i>
+                    <p>No logs available for this task instance</p>
+                    <p class="text-xs text-gray-400 mt-1">The task may not have executed yet, or logs may have been cleared</p>
+                </div>
+            </div>
+            <div class="p-4 border-t border-gray-200 flex justify-end space-x-2">
+                <button @click="showLogsModal = false" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                    Close
+                </button>
+                <button x-show="!logsLoading && !logsError && logsContent" 
+                        @click="navigator.clipboard.writeText(logsContent)" 
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                    <i class="fa fa-copy mr-2"></i>Copy Logs
+                </button>
             </div>
         </div>
     </div>
@@ -180,17 +619,43 @@ function airflowMonitor() {
     return {
         dags: [],
         recentRuns: [],
+        showLogsModal: false,
+        currentLogTask: null,
+        logsContent: '',
+        logsLoading: false,
+        logsError: null,
         selectedRun: null,
         selectedRunTasks: [],
         showModal: false,
         airflowHealthy: false,
         lastUpdate: 'Never',
+        taskStats: { success: 0, running: 0, failed: 0, queued: 0 },
+        mlflowRuns: [],
+        runArtifacts: [],
+        loadingArtifacts: false,
         
         async init() {
             await this.checkHealth();
             await this.loadDAGs();
             await this.loadRecentRuns();
             this.lastUpdate = new Date().toLocaleTimeString();
+
+            // Check for selected DAG from URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const selectedDag = urlParams.get('dag');
+            if (selectedDag) {
+                // Find and expand the selected DAG
+                const dagCard = document.querySelector(`[data-dag-id="${selectedDag}"]`);
+                if (dagCard) {
+                    // Scroll to the DAG
+                    dagCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Add highlight effect
+                    dagCard.classList.add('ring-2', 'ring-blue-500', 'ring-opacity-75');
+                    setTimeout(() => {
+                        dagCard.classList.remove('ring-2', 'ring-blue-500', 'ring-opacity-75');
+                    }, 3000);
+                }
+            }
             
             // Auto-refresh every 30 seconds
             setInterval(() => this.refreshData(), 30000);
@@ -207,23 +672,46 @@ function airflowMonitor() {
         
         async loadDAGs() {
             try {
-                const response = await fetch('/api/airflow/dags?limit=100');
+                // Load all DAGs including those with import errors
+                const response = await fetch('/api/airflow/dags?limit=100&only_active=false');
                 const data = await response.json();
                 this.dags = data.dags || [];
+                
+                // Log DAG IDs for debugging
+                console.log('Loaded DAGs:', this.dags.map(d => d.dag_id));
+                
+                // Check if IBKR workflows are present
+                const ibkrDags = this.dags.filter(d => d.dag_id.startsWith('ibkr_'));
+                console.log('IBKR DAGs found:', ibkrDags.map(d => ({ id: d.dag_id, paused: d.is_paused, has_import_errors: d.has_import_errors })));
+                
+                if (ibkrDags.length === 0 && this.dags.length > 0) {
+                    console.warn('No IBKR workflows found. Available DAGs:', this.dags.map(d => d.dag_id));
+                }
             } catch (error) {
                 console.error('Failed to load DAGs:', error);
+                // Show error to user
+                alert('Failed to load DAGs from Airflow. Check console for details.');
             }
         },
         
         async loadRecentRuns() {
             try {
-                // Load runs for all DAGs
+                // Load runs for all DAGs (not just first 5)
                 const runs = [];
-                for (const dag of this.dags.slice(0, 5)) {  // Limit to first 5 DAGs
-                    const response = await fetch(`/api/airflow/dags/${dag.dag_id}/dagRuns?limit=5&order_by=-start_date`);
-                    const data = await response.json();
-                    if (data.dag_runs) {
-                        runs.push(...data.dag_runs.map(r => ({...r, dag_id: dag.dag_id})));
+                const dagIds = this.dags.map(d => d.dag_id);
+                
+                // Also check for known IBKR DAGs even if not in the list
+                const knownIbkrDags = ['ibkr_trading_signal_workflow', 'ibkr_stock_data_workflow', 'ibkr_multi_symbol_workflow'];
+                for (const dagId of [...dagIds, ...knownIbkrDags.filter(id => !dagIds.includes(id))]) {
+                    try {
+                        const response = await fetch(`/api/airflow/dags/${dagId}/dagRuns?limit=5&order_by=-start_date`);
+                        const data = await response.json();
+                        if (data.dag_runs && data.dag_runs.length > 0) {
+                            runs.push(...data.dag_runs.map(r => ({...r, dag_id: dagId})));
+                        }
+                    } catch (err) {
+                        // Skip DAGs that don't exist or have errors
+                        console.debug(`Could not load runs for ${dagId}:`, err);
                     }
                 }
                 this.recentRuns = runs.sort((a, b) => new Date(b.start_date) - new Date(a.start_date)).slice(0, 20);
@@ -232,33 +720,388 @@ function airflowMonitor() {
             }
         },
         
-        async triggerDAG(dagId) {
+        async triggerDAG(dagId, event = null) {
+            // Check for active runs and max_active_runs limit
+            const dag = this.dags.find(d => d.dag_id === dagId);
+            if (!dag) {
+                alert(`DAG "${dagId}" not found`);
+                return;
+            }
+
+            // Check if DAG is paused or has import errors
+            if (dag.is_paused) {
+                alert(`Cannot trigger DAG "${dagId}": DAG is paused. Please unpause the DAG in Airflow UI first.`);
+                return;
+            }
+
+            if (dag.has_import_errors) {
+                alert(`Cannot trigger DAG "${dagId}": DAG has import errors. Please fix the import errors before triggering.`);
+                return;
+            }
+
+            // Check for active runs
+            let activeRunsCount = 0;
+            let maxActiveRuns = dag.max_active_runs || 1;
+            try {
+                const activeRunsResponse = await fetch(`/api/airflow/dags/${dagId}/dagRuns?state=running`);
+                if (activeRunsResponse.ok) {
+                    const activeRunsData = await activeRunsResponse.json();
+                    activeRunsCount = activeRunsData.total_entries || 0;
+                }
+            } catch (error) {
+                console.warn('Failed to check active runs:', error);
+            }
+
+            // Build confirmation message
+            let confirmMessage = `Trigger DAG "${dagId}"?`;
+            if (activeRunsCount >= maxActiveRuns) {
+                confirmMessage += `\n\n⚠️ Warning: Maximum active runs limit (${maxActiveRuns}) is reached.\n`;
+                confirmMessage += `There are ${activeRunsCount} active run(s).\n`;
+                confirmMessage += `This trigger will be queued and will start when the active run completes.`;
+            }
+
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+
+            // Show loading state
+            let triggerButton = null;
+            let originalText = null;
+            if (event && event.target) {
+                triggerButton = event.target.closest('button');
+                if (triggerButton) {
+                    originalText = triggerButton.innerHTML;
+                    triggerButton.disabled = true;
+                    triggerButton.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i>Triggering...';
+                }
+            }
+
             try {
                 const response = await fetch(`/api/airflow/dags/${dagId}/dagRuns`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({})
                 });
+                const data = await response.json();
+                
                 if (response.ok) {
-                    alert('DAG triggered successfully');
+                    // Check if run was queued
+                    if (data.state === 'queued' || data.queued_reason === 'max_active_runs') {
+                        let message = `DAG "${dagId}" triggered successfully!\n\n`;
+                        message += `Run ID: ${data.dag_run_id}\n`;
+                        message += `Status: Queued (waiting for active run to complete)\n`;
+                        if (data.active_runs_count) {
+                            message += `Active runs: ${data.active_runs_count}/${data.max_active_runs}\n`;
+                        }
+                        message += `\nThe workflow will start automatically when the active run completes.`;
+                        alert(message);
+                    } else {
+                        let message = `DAG "${dagId}" triggered successfully!\n\n`;
+                        message += `Run ID: ${data.dag_run_id}\n`;
+                        message += `Status: ${data.state || 'Running'}\n`;
+                        if (data.message) {
+                            message += `\n${data.message}`;
+                        }
+                        alert(message);
+                    }
+                    
+                    // Refresh data to show new run
                     await this.refreshData();
+                    
+                    // Scroll to new run in table if visible
+                    setTimeout(() => {
+                        const runRow = document.querySelector(`[data-run-id="${data.dag_run_id}"]`);
+                        if (runRow) {
+                            runRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            runRow.classList.add('bg-yellow-50', 'ring-2', 'ring-yellow-400');
+                            setTimeout(() => {
+                                runRow.classList.remove('bg-yellow-50', 'ring-2', 'ring-yellow-400');
+                            }, 3000);
+                        }
+                    }, 500);
+                } else {
+                    // Handle error response
+                    let errorMessage = `Failed to trigger DAG "${dagId}"\n\n`;
+                    if (data.error) {
+                        errorMessage += `Error: ${data.error}\n`;
+                    }
+                    if (data.message) {
+                        errorMessage += `Message: ${data.message}\n`;
+                    }
+                    if (data.suggestion) {
+                        errorMessage += `\nSuggestion: ${data.suggestion}`;
+                    }
+                    if (!data.error && !data.message) {
+                        errorMessage += 'Unknown error occurred';
+                    }
+                    alert(errorMessage);
                 }
             } catch (error) {
                 console.error('Failed to trigger DAG:', error);
-                alert('Failed to trigger DAG');
+                let errorMessage = `Failed to trigger DAG "${dagId}"\n\n`;
+                errorMessage += `Error: ${error.message}\n\n`;
+                errorMessage += `Please check:\n`;
+                errorMessage += `- Airflow connection is available\n`;
+                errorMessage += `- DAG is not paused\n`;
+                errorMessage += `- DAG has no import errors`;
+                alert(errorMessage);
+            } finally {
+                // Restore button state
+                if (triggerButton && originalText) {
+                    triggerButton.disabled = false;
+                    triggerButton.innerHTML = originalText;
+                }
             }
         },
         
         async viewRunDetails(dagId, runId) {
             try {
+                // Load task instances
                 const response = await fetch(`/api/airflow/dags/${dagId}/dagRuns/${runId}/taskInstances`);
                 const data = await response.json();
                 this.selectedRun = this.recentRuns.find(r => r.dag_run_id === runId);
                 this.selectedRunTasks = data.task_instances || [];
+
+                // Calculate task statistics
+                this.taskStats = { success: 0, running: 0, failed: 0, queued: 0 };
+                this.selectedRunTasks.forEach(task => {
+                    switch (task.state) {
+                        case 'success': this.taskStats.success++; break;
+                        case 'running': this.taskStats.running++; break;
+                        case 'failed': this.taskStats.failed++; break;
+                        case 'queued': this.taskStats.queued++; break;
+                    }
+                });
+
+                // Load related MLflow runs (mock for now - in real implementation, this would query MLflow API)
+                this.mlflowRuns = [];
+                // TODO: Implement MLflow run lookup based on DAG run ID
+
+                // Load related artifacts by execution_id (which is the DAG run's execution date)
+                await this.loadArtifactsForRun(runId);
+                
+                // Set up polling for artifacts if run is still running
+                if (this.selectedRun && this.selectedRun.state === 'running') {
+                    const pollInterval = setInterval(async () => {
+                        if (this.selectedRun && this.selectedRun.state === 'running') {
+                            await this.loadArtifactsForRun(runId);
+                        } else {
+                            clearInterval(pollInterval);
+                        }
+                    }, 5000); // Poll every 5 seconds
+                    
+                    // Clear interval when modal is closed
+                    this.$watch('showModal', (value) => {
+                        if (!value) {
+                            clearInterval(pollInterval);
+                        }
+                    });
+                }
+
                 this.showModal = true;
             } catch (error) {
                 console.error('Failed to load run details:', error);
+                alert('Failed to load run details');
             }
+        },
+
+        async loadArtifactsForRun(runId) {
+            this.loadingArtifacts = true;
+            try {
+                // Try to get execution_id from the selected run
+                let executionId = null;
+                if (this.selectedRun && this.selectedRun.execution_date) {
+                    executionId = this.selectedRun.execution_date;
+                } else if (runId) {
+                    // Extract date from runId (format: scheduled__2025-01-15T10:00:00+00:00)
+                    const dateMatch = runId.match(/(\d{4}-\d{2}-\d{2})/);
+                    if (dateMatch) {
+                        executionId = dateMatch[1];
+                    }
+                }
+                
+                // Fetch artifacts filtered by execution_id if available
+                let url = '/api/artifacts/?limit=100';
+                if (executionId) {
+                    url += `&execution_id=${encodeURIComponent(executionId)}`;
+                }
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    console.error('Failed to fetch artifacts:', response.status);
+                    this.runArtifacts = [];
+                    this.loadingArtifacts = false;
+                    return;
+                }
+                
+                const data = await response.json();
+                const allArtifacts = data.artifacts || [];
+                
+                // Filter artifacts by execution_id or workflow_id matching the DAG
+                if (this.selectedRun) {
+                    this.runArtifacts = allArtifacts.filter(artifact => {
+                        // Match by execution_id or workflow_id matching DAG ID
+                        const matchesExecution = executionId && artifact.execution_id && 
+                            artifact.execution_id.toString().includes(executionId);
+                        const matchesWorkflow = artifact.workflow_id === this.selectedRun.dag_id ||
+                            artifact.dag_id === this.selectedRun.dag_id;
+                        return matchesExecution || matchesWorkflow;
+                    });
+                } else {
+                    this.runArtifacts = allArtifacts;
+                }
+                
+                // Sort by created_at
+                this.runArtifacts.sort((a, b) => 
+                    new Date(b.created_at) - new Date(a.created_at)
+                );
+                
+                console.log(`Found ${this.runArtifacts.length} artifacts for run ${runId}`);
+            } catch (error) {
+                console.error('Error loading artifacts for run:', error);
+                this.runArtifacts = [];
+            } finally {
+                this.loadingArtifacts = false;
+            }
+        },
+        
+        getArtifactType(artifact) {
+            // Determine actual artifact type (handles order/trade/portfolio stored as signal)
+            if (artifact.type === 'signal' && artifact.signal_data?.artifact_type) {
+                return artifact.signal_data.artifact_type;
+            }
+            return artifact.type;
+        },
+        
+        getArtifactTypeLabel(artifact) {
+            const type = this.getArtifactType(artifact);
+            const labels = {
+                'llm': 'LLM',
+                'chart': 'Chart',
+                'signal': 'Signal',
+                'order': 'Order',
+                'trade': 'Trade',
+                'portfolio': 'Portfolio'
+            };
+            return labels[type] || type;
+        },
+        
+        getArtifactIcon(artifact) {
+            const type = this.getArtifactType(artifact);
+            const icons = {
+                'llm': 'fa fa-robot',
+                'chart': 'fa fa-chart-bar',
+                'signal': 'fa fa-bolt',
+                'order': 'fa fa-shopping-cart',
+                'trade': 'fa fa-exchange-alt',
+                'portfolio': 'fa fa-wallet'
+            };
+            return icons[type] || 'fa fa-box';
+        },
+        
+        getArtifactBadgeClass(artifact) {
+            const type = this.getArtifactType(artifact);
+            const classes = {
+                'llm': 'bg-purple-100 text-purple-800',
+                'chart': 'bg-blue-100 text-blue-800',
+                'signal': 'bg-yellow-100 text-yellow-800',
+                'order': 'bg-green-100 text-green-800',
+                'trade': 'bg-orange-100 text-orange-800',
+                'portfolio': 'bg-teal-100 text-teal-800'
+            };
+            return classes[type] || 'bg-gray-100 text-gray-800';
+        },
+        
+        getArtifactCount(type) {
+            return this.runArtifacts.filter(a => this.getArtifactType(a) === type).length;
+        },
+        
+        getArtifactsBySymbol() {
+            // Group artifacts by symbol, then by type
+            const grouped = {};
+            
+            for (const artifact of this.runArtifacts) {
+                const symbol = artifact.symbol || 'General';
+                const type = this.getArtifactType(artifact);
+                
+                if (!grouped[symbol]) {
+                    grouped[symbol] = {};
+                }
+                
+                if (!grouped[symbol][type]) {
+                    grouped[symbol][type] = [];
+                }
+                
+                grouped[symbol][type].push(artifact);
+            }
+            
+            // Sort artifacts within each type by created_at
+            for (const symbol in grouped) {
+                for (const type in grouped[symbol]) {
+                    grouped[symbol][type].sort((a, b) => 
+                        new Date(b.created_at) - new Date(a.created_at)
+                    );
+                }
+            }
+            
+            return grouped;
+        },
+
+        async viewTaskLogs(task) {
+            // Set current task for logs modal
+            this.currentLogTask = task;
+            this.logsContent = '';
+            this.logsLoading = true;
+            this.logsError = null;
+            this.showLogsModal = true;
+            
+            try {
+                const logUrl = `/api/airflow/dags/${this.selectedRun.dag_id}/dagRuns/${this.selectedRun.dag_run_id}/taskInstances/${task.task_id}/logs/1`;
+                const response = await fetch(logUrl);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    if (data.empty) {
+                        this.logsContent = data.message || 'No logs available for this task instance';
+                        this.logsError = null;
+                    } else {
+                        // Extract log content from response
+                        // Backend returns: {content: "...", raw: true/false} or {content: "...", empty: true}
+                        let logText = '';
+                        if (data.content !== undefined && data.content !== null) {
+                            logText = data.content;
+                        } else if (typeof data === 'string') {
+                            logText = data;
+                        } else {
+                            logText = JSON.stringify(data, null, 2);
+                        }
+                        this.logsContent = logText;
+                        this.logsError = null;
+                    }
+                } else {
+                    this.logsError = data.error || data.message || 'Failed to fetch logs';
+                    this.logsContent = '';
+                }
+            } catch (error) {
+                this.logsError = `Error fetching logs: ${error.message}`;
+                this.logsContent = '';
+            } finally {
+                this.logsLoading = false;
+            }
+        },
+
+        viewTaskDetails(task) {
+            // Show task details in a simple alert for now
+            const details = `
+Task ID: ${task.task_id}
+State: ${task.state}
+Operator: ${task.operator || 'N/A'}
+Start Date: ${this.formatDate(task.start_date)}
+End Date: ${this.formatDate(task.end_date)}
+Duration: ${this.calculateDuration(task.start_date, task.end_date)}
+Try Number: ${task.try_number || 1}
+            `;
+            alert(details);
         },
         
         async refreshData() {

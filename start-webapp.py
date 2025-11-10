@@ -451,6 +451,20 @@ async def main():
             startup.print_error(f"Critical services failed: {', '.join(critical_failures)}")
             return 1
 
+        # Ask about viewing logs (default to yes)
+        if not args.fast:
+            try:
+                print(f"\n{Colors.CYAN}{'━' * 50}{Colors.NC}")
+                response = input(f"{Colors.YELLOW}Show live backend logs? (Y/n): {Colors.NC}").strip().lower()
+                if response not in ['n', 'no']:  # Default to yes if empty or anything other than n/no
+                    startup.print_info("Starting log viewer (Ctrl+C to exit)...")
+                    try:
+                        subprocess.run([*startup.compose_cmd.split(), 'logs', '-f', 'backend'], check=False)
+                    except KeyboardInterrupt:
+                        startup.print_info("Log viewer stopped")
+            except (KeyboardInterrupt, EOFError):
+                startup.print_info("Skipping log viewer")
+
         return 0
 
     except KeyboardInterrupt:

@@ -16,6 +16,6 @@ class MarketData(Base):
     data = Column(JSON, nullable=False)  # OHLCV and indicators
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
-    # Relationships
-    code = relationship("Code", back_populates="market_data")
+    # Note: Code model removed - relationship disabled
+    # code = relationship("Code", back_populates="market_data")
 

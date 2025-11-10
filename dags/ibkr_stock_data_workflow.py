@@ -8,10 +8,17 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 import logging
+import os
 
 from utils.config import config
 from utils.database import db_client
 from utils.mlflow_tracking import mlflow_run_context
+from utils.chart_generator import ChartGenerator
+from utils.llm_signal_analyzer import LLMSignalAnalyzer
+from utils.artifact_storage import store_chart_artifact, store_signal_artifact
+from utils.minio_upload import upload_chart_to_minio
+from models.market_data import MarketData, OHLCVBar
+from models.chart import Timeframe, ChartConfig
 
 # Configure logging
 logging.basicConfig(
@@ -330,6 +337,345 @@ def log_to_mlflow(**context):
         raise
 
 
+def generate_charts(**context):
+    """
+    Generate daily and weekly charts with technical indicators for each symbol
+    """
+    logger.info("Starting chart generation")
+    
+    try:
+        task_instance = context['task_instance']
+        dag_run = context['dag_run']
+        execution_id = dag_run.run_id
+        
+        # Retrieve transformed data from previous task
+        transformed_data = task_instance.xcom_pull(task_ids='transform_data', key='transformed_data')
+        if not transformed_data:
+            raise ValueError("No transformed data available for chart generation")
+        
+        import pandas as pd
+        df = pd.DataFrame(transformed_data)
+        
+        # Convert date column back to datetime if it's a string
+        if 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'])
+        
+        # Initialize chart generator
+        # Use shared volume for charts (accessible by both Airflow and backend)
+        charts_dir = os.getenv('CHARTS_DIR', '/app/charts')
+        chart_generator = ChartGenerator(output_dir=charts_dir)
+        
+        charts_generated = []
+        
+        # Generate charts for each symbol
+        for symbol in df['symbol'].unique() if 'symbol' in df.columns else []:
+            symbol_data = df[df['symbol'] == symbol].copy()
+            symbol_data = symbol_data.sort_values('date')
+            
+            # Convert to MarketData format
+            bars = []
+            for _, row in symbol_data.iterrows():
+                bar = OHLCVBar(
+                    timestamp=row['date'],
+                    open=float(row.get('open', row.get('close', 0))),
+                    high=float(row.get('high', row.get('close', 0))),
+                    low=float(row.get('low', row.get('close', 0))),
+                    close=float(row.get('close', 0)),
+                    volume=int(row.get('volume', 0))
+                )
+                bars.append(bar)
+            
+            market_data = MarketData(symbol=symbol, bars=bars, timeframe="1D")
+            
+            # Generate daily chart
+            try:
+                daily_chart = chart_generator.generate_chart(
+                    market_data=market_data,
+                    config=ChartConfig(
+                        symbol=symbol,
+                        timeframe=Timeframe.DAILY,
+                        include_sma=True,
+                        include_rsi=True,
+                        include_macd=True,
+                        include_bollinger=True
+                    )
+                )
+                
+                if daily_chart and daily_chart.file_path:
+                    # Upload chart to MinIO
+                    minio_url = upload_chart_to_minio(
+                        file_path=daily_chart.file_path,
+                        symbol=symbol,
+                        timeframe='daily',
+                        execution_id=execution_id
+                    )
+                    
+                    # Store chart artifact with MinIO URL
+                    image_path = minio_url if minio_url else daily_chart.file_path
+                    store_chart_artifact(
+                        name=f"{symbol}_daily_chart",
+                        symbol=symbol,
+                        image_path=image_path,
+                        chart_type="daily",
+                        run_id=None,
+                        execution_id=execution_id,
+                        dag_id=context['dag'].dag_id,
+                        task_id=context['task'].task_id,
+                        chart_data={
+                            'timeframe': 'daily',
+                            'indicators': ['SMA', 'RSI', 'MACD', 'Bollinger Bands'],
+                            'bars_count': len(bars),
+                            'minio_url': minio_url,
+                            'local_path': daily_chart.file_path
+                        }
+                    )
+                    charts_generated.append({
+                        'symbol': symbol, 
+                        'timeframe': 'daily', 
+                        'path': image_path,
+                        'local_path': daily_chart.file_path,
+                        'bars_count': len(bars)
+                    })
+                    logger.info(f"Generated daily chart for {symbol} - MinIO URL: {minio_url}")
+            except Exception as e:
+                logger.error(f"Failed to generate daily chart for {symbol}: {e}", exc_info=True)
+            
+            # Generate weekly chart
+            try:
+                # Create weekly market data
+                weekly_market_data = MarketData(symbol=symbol, bars=bars, timeframe="1W")
+                weekly_chart = chart_generator.generate_chart(
+                    market_data=weekly_market_data,
+                    config=ChartConfig(
+                        symbol=symbol,
+                        timeframe=Timeframe.WEEKLY,
+                        include_sma=True,
+                        include_rsi=True,
+                        include_macd=True,
+                        include_bollinger=True
+                    )
+                )
+                
+                if weekly_chart and weekly_chart.file_path:
+                    # Upload chart to MinIO
+                    minio_url = upload_chart_to_minio(
+                        file_path=weekly_chart.file_path,
+                        symbol=symbol,
+                        timeframe='weekly',
+                        execution_id=execution_id
+                    )
+                    
+                    # Store chart artifact with MinIO URL
+                    image_path = minio_url if minio_url else weekly_chart.file_path
+                    store_chart_artifact(
+                        name=f"{symbol}_weekly_chart",
+                        symbol=symbol,
+                        image_path=image_path,
+                        chart_type="weekly",
+                        run_id=None,
+                        execution_id=execution_id,
+                        dag_id=context['dag'].dag_id,
+                        task_id=context['task'].task_id,
+                        chart_data={
+                            'timeframe': 'weekly',
+                            'indicators': ['SMA', 'RSI', 'MACD', 'Bollinger Bands'],
+                            'bars_count': len(bars),
+                            'minio_url': minio_url,
+                            'local_path': weekly_chart.file_path
+                        }
+                    )
+                    charts_generated.append({
+                        'symbol': symbol, 
+                        'timeframe': 'weekly', 
+                        'path': image_path,
+                        'local_path': weekly_chart.file_path,
+                        'bars_count': len(bars)
+                    })
+                    logger.info(f"Generated weekly chart for {symbol} - MinIO URL: {minio_url}")
+            except Exception as e:
+                logger.error(f"Failed to generate weekly chart for {symbol}: {e}", exc_info=True)
+        
+        # Store charts summary in XCom
+        task_instance.xcom_push(key='charts_generated', value=charts_generated)
+        
+        logger.info(f"Chart generation complete. Generated {len(charts_generated)} charts")
+        return {'charts_generated': len(charts_generated), 'charts': charts_generated}
+    
+    except Exception as e:
+        logger.error(f"Chart generation failed: {e}", exc_info=True)
+        raise
+
+
+def llm_analysis(**context):
+    """
+    Perform LLM analysis on generated charts to generate trading signals
+    """
+    logger.info("Starting LLM analysis")
+    
+    try:
+        task_instance = context['task_instance']
+        dag_run = context['dag_run']
+        execution_id = dag_run.run_id
+        
+        # Retrieve charts from previous task
+        charts_generated = task_instance.xcom_pull(task_ids='generate_charts', key='charts_generated') or []
+        
+        if not charts_generated:
+            logger.warning("No charts available for LLM analysis")
+            return {'analysis_count': 0}
+        
+        # Initialize LLM analyzer
+        llm_analyzer = LLMSignalAnalyzer()
+        
+        analyses = []
+        
+        # Group charts by symbol
+        charts_by_symbol = {}
+        for chart in charts_generated:
+            symbol = chart['symbol']
+            if symbol not in charts_by_symbol:
+                charts_by_symbol[symbol] = {'daily': None, 'weekly': None}
+            charts_by_symbol[symbol][chart['timeframe']] = chart['path']
+        
+        # Analyze each symbol
+        for symbol, charts in charts_by_symbol.items():
+            if not charts['daily'] or not charts['weekly']:
+                logger.warning(f"Skipping {symbol} - missing daily or weekly chart")
+                continue
+            
+            try:
+                # Load chart images
+                import base64
+                from pathlib import Path
+                import requests
+                
+                daily_path_str = charts['daily']
+                weekly_path_str = charts['weekly']
+                
+                # Check if paths are MinIO URLs or local paths
+                daily_path = Path(daily_path_str) if not daily_path_str.startswith('http') else None
+                weekly_path = Path(weekly_path_str) if not weekly_path_str.startswith('http') else None
+                
+                # Read chart images as base64
+                if daily_path and daily_path.exists():
+                    with open(daily_path, 'rb') as f:
+                        daily_image = base64.b64encode(f.read()).decode('utf-8')
+                elif daily_path_str.startswith('http'):
+                    # Download from MinIO URL
+                    response = requests.get(daily_path_str, timeout=10)
+                    response.raise_for_status()
+                    daily_image = base64.b64encode(response.content).decode('utf-8')
+                else:
+                    logger.warning(f"Daily chart file not found for {symbol}: {daily_path_str}")
+                    continue
+                
+                if weekly_path and weekly_path.exists():
+                    with open(weekly_path, 'rb') as f:
+                        weekly_image = base64.b64encode(f.read()).decode('utf-8')
+                elif weekly_path_str.startswith('http'):
+                    # Download from MinIO URL
+                    response = requests.get(weekly_path_str, timeout=10)
+                    response.raise_for_status()
+                    weekly_image = base64.b64encode(response.content).decode('utf-8')
+                else:
+                    logger.warning(f"Weekly chart file not found for {symbol}: {weekly_path_str}")
+                    continue
+                
+                # Get bars count from chart metadata or use default
+                # Find the chart in charts_generated to get bars_count
+                bars_count = 0
+                for chart in charts_generated:
+                    if chart['symbol'] == symbol and chart['timeframe'] == 'daily':
+                        bars_count = chart.get('bars_count', 0)
+                        break
+                
+                # If not found, try to get from weekly chart
+                if bars_count == 0:
+                    for chart in charts_generated:
+                        if chart['symbol'] == symbol and chart['timeframe'] == 'weekly':
+                            bars_count = chart.get('bars_count', 0)
+                            break
+                
+                # Create ChartResult objects
+                from models.chart import ChartResult
+                # ChartResult requires file_path, width, height, periods_shown
+                # We'll use defaults for missing fields
+                daily_chart_result = ChartResult(
+                    symbol=symbol,
+                    timeframe=Timeframe.DAILY,
+                    file_path=daily_path_str,
+                    width=1920,
+                    height=1080,
+                    periods_shown=bars_count if bars_count > 0 else 100  # Default to 100 if not found
+                )
+                
+                weekly_chart_result = ChartResult(
+                    symbol=symbol,
+                    timeframe=Timeframe.WEEKLY,
+                    file_path=weekly_path_str,
+                    width=1920,
+                    height=1080,
+                    periods_shown=bars_count if bars_count > 0 else 100  # Default to 100 if not found
+                )
+                
+                # Perform LLM analysis
+                signal = llm_analyzer.analyze_charts(
+                    symbol=symbol,
+                    daily_chart=daily_chart_result,
+                    weekly_chart=weekly_chart_result
+                )
+                
+                if signal:
+                    # Store LLM analysis artifact using store_signal_artifact
+                    # Extract signal data for storage
+                    from utils.artifact_storage import store_signal_artifact
+                    store_signal_artifact(
+                        name=f"{symbol}_llm_analysis",
+                        symbol=symbol,
+                        action=signal.action.value if hasattr(signal.action, 'value') else str(signal.action),
+                        confidence=float(signal.confidence_score) if signal.confidence_score else 0.0,
+                        run_id=None,
+                        execution_id=execution_id,
+                        dag_id=context['dag'].dag_id,
+                        task_id=context['task'].task_id,
+                        signal_data={
+                            'action': signal.action.value if hasattr(signal.action, 'value') else str(signal.action),
+                            'confidence': signal.confidence.value if hasattr(signal.confidence, 'value') else str(signal.confidence),
+                            'confidence_score': float(signal.confidence_score) if signal.confidence_score else 0.0,
+                            'reasoning': signal.reasoning or '',
+                            'key_factors': signal.key_factors or []
+                        },
+                        metadata={
+                            'daily_chart': str(daily_path),
+                            'weekly_chart': str(weekly_path),
+                            'model_name': llm_analyzer.model if hasattr(llm_analyzer, 'model') else 'unknown',
+                            'provider': llm_analyzer.provider if hasattr(llm_analyzer, 'provider') else 'unknown'
+                        }
+                    )
+                    
+                    analyses.append({
+                        'symbol': symbol,
+                        'action': signal.action.value if hasattr(signal.action, 'value') else str(signal.action),
+                        'confidence': signal.confidence.value if hasattr(signal.confidence, 'value') else str(signal.confidence),
+                        'confidence_score': float(signal.confidence_score) if signal.confidence_score else 0.0,
+                        'reasoning': signal.reasoning or ''
+                    })
+                    logger.info(f"LLM analysis complete for {symbol}: {signal.action}")
+            
+            except Exception as e:
+                logger.error(f"Failed LLM analysis for {symbol}: {e}", exc_info=True)
+        
+        # Store analysis summary in XCom
+        task_instance.xcom_push(key='llm_analyses', value=analyses)
+        
+        logger.info(f"LLM analysis complete. Analyzed {len(analyses)} symbols")
+        return {'analysis_count': len(analyses), 'analyses': analyses}
+    
+    except Exception as e:
+        logger.error(f"LLM analysis failed: {e}", exc_info=True)
+        raise
+
+
 # Define the DAG
 with DAG(
     'ibkr_stock_data_workflow',
@@ -387,7 +733,37 @@ with DAG(
         """
     )
     
-    # Task 4: Log to MLflow
+    # Task 4: Generate charts
+    generate_charts_task = PythonOperator(
+        task_id='generate_charts',
+        python_callable=generate_charts,
+        provide_context=True,
+        doc_md="""
+        ### Generate Charts
+        Generates daily and weekly technical analysis charts with indicators:
+        - SMA (20, 50, 200)
+        - RSI (14)
+        - MACD
+        - Bollinger Bands
+        - Volume analysis
+        """
+    )
+    
+    # Task 5: LLM Analysis
+    llm_analysis_task = PythonOperator(
+        task_id='llm_analysis',
+        python_callable=llm_analysis,
+        provide_context=True,
+        doc_md="""
+        ### LLM Analysis
+        Analyzes generated charts using LLM to generate trading signals:
+        - Action: BUY, SELL, or HOLD
+        - Confidence: HIGH, MEDIUM, or LOW
+        - Reasoning: Detailed analysis explanation
+        """
+    )
+    
+    # Task 6: Log to MLflow
     mlflow_task = PythonOperator(
         task_id='log_to_mlflow',
         python_callable=log_to_mlflow,
@@ -397,11 +773,11 @@ with DAG(
         Tracks the workflow run in MLflow:
         - Parameters (symbols, dates, configuration)
         - Metrics (row counts, validation status)
-        - Artifacts (data samples, summary reports)
+        - Artifacts (data samples, summary reports, charts, LLM analysis)
         - Debug information (if debug mode enabled)
         """
     )
     
     # Define task dependencies
-    extract_task >> validate_task >> transform_task >> mlflow_task
+    extract_task >> validate_task >> transform_task >> generate_charts_task >> llm_analysis_task >> mlflow_task
 

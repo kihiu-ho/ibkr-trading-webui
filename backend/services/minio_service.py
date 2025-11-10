@@ -60,7 +60,8 @@ class MinIOService:
         chart_jpeg: bytes,
         chart_html: str,
         symbol: str,
-        chart_id: int
+        chart_id: int,
+        timeframe: Optional[str] = None
     ) -> Tuple[str, str]:
         """
         Upload chart files to MinIO.
@@ -77,10 +78,22 @@ class MinIOService:
         try:
             timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             unique_id = str(uuid.uuid4())[:8]
+
+            # Map timeframe to human-readable alias directory
+            alias = None
+            if timeframe:
+                tf = timeframe.lower()
+                if tf in ("1d", "d", "day", "daily"):
+                    alias = "daily"
+                elif tf in ("1w", "w", "week", "weekly"):
+                    alias = "weekly"
+                elif tf in ("1mo", "1m", "mo", "month", "monthly"):
+                    alias = "monthly"
             
-            # Generate object names
-            jpeg_name = f"charts/{symbol}/{timestamp}_{unique_id}_{chart_id}.jpg"
-            html_name = f"charts/{symbol}/{timestamp}_{unique_id}_{chart_id}.html"
+            # Generate object names (optionally include timeframe alias folder)
+            base_dir = f"charts/{symbol}" + (f"/{alias}" if alias else "")
+            jpeg_name = f"{base_dir}/{timestamp}_{unique_id}_{chart_id}.jpg"
+            html_name = f"{base_dir}/{timestamp}_{unique_id}_{chart_id}.html"
             
             # Upload JPEG
             jpeg_stream = io.BytesIO(chart_jpeg)

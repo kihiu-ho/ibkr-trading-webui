@@ -1,0 +1,689 @@
+{% extends "base.html" %}
+
+{% block title %}Model Artifacts{% endblock %}
+{% block page_title %}Model Artifacts{% endblock %}
+
+{% block content %}
+<div x-data="artifactsData()" x-init="init()">
+    <!-- Header Actions -->
+    <div class="flex justify-between items-center mb-6">
+        <div class="flex items-center gap-x-4">
+            <span class="relative flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" x-show="isLive"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3" :class="isLive ? 'bg-green-500' : 'bg-gray-500'"></span>
+            </span>
+            <span class="text-sm text-gray-700" x-text="isLive ? 'Live' : 'Offline'"></span>
+            <span class="text-sm text-gray-500">Last updated: <span x-text="lastUpdate"></span></span>
+        </div>
+        <div class="flex gap-2">
+            <!-- View Toggle -->
+            <div class="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+                <button @click="viewMode = 'grouped'; sessionStorage.setItem('artifactViewMode', 'grouped')" 
+                        :class="viewMode === 'grouped' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'"
+                        class="px-3 py-1 rounded-md text-sm font-medium transition">
+                    <i class="fa fa-layer-group mr-1"></i> Grouped
+                </button>
+                <button @click="viewMode = 'flat'; sessionStorage.setItem('artifactViewMode', 'flat')" 
+                        :class="viewMode === 'flat' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'"
+                        class="px-3 py-1 rounded-md text-sm font-medium transition">
+                    <i class="fa fa-list mr-1"></i> List
+                </button>
+            </div>
+            <button @click="refreshArtifacts()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+                <i class="fa fa-refresh mr-2"></i>Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Metrics Cards -->
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+        <!-- LLM Analyses -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-robot text-3xl text-purple-500"></i>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">LLM Analyses</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-gray-900" x-text="llmCount">0</div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-chart-bar text-3xl text-blue-500"></i>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Charts</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-gray-900" x-text="chartCount">0</div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trading Signals -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-bolt text-3xl text-yellow-500"></i>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Trading Signals</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-gray-900" x-text="signalCount">0</div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Today's Artifacts -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-clock text-3xl text-green-500"></i>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Today's Artifacts</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-gray-900" x-text="todayCount">0</div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white shadow rounded-lg p-4 mb-6">
+        <div class="flex flex-col sm:flex-row gap-4">
+            <div class="flex gap-2">
+                <button @click="filterType = 'all'; filterArtifacts()" 
+                        :class="filterType === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition">
+                    All
+                </button>
+                <button @click="filterType = 'llm'; filterArtifacts()" 
+                        :class="filterType === 'llm' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition">
+                    <i class="fa fa-robot mr-1"></i> LLM
+                </button>
+                <button @click="filterType = 'chart'; filterArtifacts()" 
+                        :class="filterType === 'chart' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition">
+                    <i class="fa fa-chart-bar mr-1"></i> Charts
+                </button>
+                <button @click="filterType = 'signal'; filterArtifacts()" 
+                        :class="filterType === 'signal' ? 'bg-yellow-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition">
+                    <i class="fa fa-bolt mr-1"></i> Signals
+                </button>
+                <button @click="filterType = 'order'; filterArtifacts()" 
+                        :class="filterType === 'order' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition">
+                    <i class="fa fa-shopping-cart mr-1"></i> Orders
+                </button>
+                <button @click="filterType = 'trade'; filterArtifacts()" 
+                        :class="filterType === 'trade' ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition">
+                    <i class="fa fa-exchange-alt mr-1"></i> Trades
+                </button>
+                <button @click="filterType = 'portfolio'; filterArtifacts()" 
+                        :class="filterType === 'portfolio' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg transition">
+                    <i class="fa fa-wallet mr-1"></i> Portfolio
+                </button>
+            </div>
+            <input type="text" x-model="searchTerm" @input="filterArtifacts()" 
+                   placeholder="Search artifacts..." 
+                   class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            <select x-model="sortBy" @change="filterArtifacts()"
+                    class="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                <option value="date-desc">Newest First</option>
+                <option value="date-asc">Oldest First</option>
+                <option value="type">By Type</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Grouped View -->
+    <div x-show="viewMode === 'grouped'" class="space-y-6">
+        <template x-for="(run, runId) in groupedArtifacts" :key="runId">
+            <div class="bg-white rounded-lg shadow overflow-hidden">
+                <!-- Run ID Group Header -->
+                <div class="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200 cursor-pointer hover:from-gray-100 hover:to-gray-150 transition"
+                     @click="toggleGroup(runId)">
+                    <div class="flex justify-between items-center">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3">
+                                <i class="fa text-lg text-gray-600"
+                                   :class="expandedGroups.includes(runId) ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900">
+                                        <i class="fa fa-play-circle mr-2 text-blue-600"></i>
+                                        <span x-text="run.metadata.workflowId"></span>
+                                    </h3>
+                                    <div class="flex items-center gap-4 mt-1 text-sm text-gray-600">
+                                        <span>
+                                            <i class="fa fa-calendar-alt mr-1"></i>
+                                            <span x-text="run.metadata.mostRecentDate ? new Date(run.metadata.mostRecentDate).toLocaleString() : 'N/A'"></span>
+                                        </span>
+                                        <span class="font-medium">
+                                            <span x-text="run.metadata.totalCount"></span> artifact<span x-show="run.metadata.totalCount !== 1">s</span>
+                                        </span>
+                                        <span class="text-xs text-gray-500">
+                                            <span x-text="Object.keys(run.symbols).length"></span> symbol<span x-show="Object.keys(run.symbols).length !== 1">s</span>
+                                        </span>
+                                        <span class="text-xs text-gray-500 font-mono" x-show="runId !== 'Unknown Run'">
+                                            <i class="fa fa-hashtag mr-1"></i>
+                                            <span x-text="runId.length > 20 ? runId.substring(0, 20) + '...' : runId"></span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                <i class="fa fa-check-circle mr-1"></i> Complete
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Run Group Content -->
+                <div x-show="expandedGroups.includes(runId)" 
+                     x-transition:enter="transition ease-out duration-200"
+                     x-transition:enter-start="opacity-0 -translate-y-1"
+                     x-transition:enter-end="opacity-100 translate-y-0"
+                     class="p-6 space-y-6">
+                    <!-- Symbol Sub-groups -->
+                    <template x-for="(symbolGroup, symbol) in run.symbols" :key="symbol">
+                        <div class="border-l-4 border-blue-400 pl-4 space-y-4">
+                            <!-- Symbol Header -->
+                            <div class="mb-3">
+                                <h4 class="text-md font-semibold text-gray-800 flex items-center gap-2">
+                                    <i class="fa fa-chart-line mr-2 text-blue-600"></i>
+                                    <span x-text="symbol"></span>
+                                    <span class="text-sm text-gray-500 font-normal">
+                                        (<span x-text="symbolGroup.metadata.totalCount"></span> artifact<span x-show="symbolGroup.metadata.totalCount !== 1">s</span>)
+                                    </span>
+                                    <span class="flex gap-2 ml-2">
+                                        <template x-for="(count, type) in symbolGroup.metadata.typeCounts" :key="type">
+                                            <span :class="getArtifactTypeBadge({type: type}).class" 
+                                                  class="px-2 py-1 rounded text-xs font-medium">
+                                                <i :class="'fa ' + getArtifactTypeBadge({type: type}).icon + ' mr-1'"></i>
+                                                <span x-text="type"></span>: <span x-text="count"></span>
+                                            </span>
+                                        </template>
+                                    </span>
+                                </h4>
+                            </div>
+                            
+                            <!-- Type Sub-groups within Symbol -->
+                            <template x-for="(artifacts, type) in symbolGroup.types" :key="type">
+                                <div class="ml-4 border-l-4 pl-4" :class="{
+                                    'border-purple-500': type === 'llm',
+                                    'border-blue-500': type === 'chart',
+                                    'border-yellow-500': type === 'signal',
+                                    'border-green-500': type === 'order',
+                                    'border-orange-500': type === 'trade',
+                                    'border-teal-500': type === 'portfolio',
+                                    'border-gray-500': !['llm', 'chart', 'signal', 'order', 'trade', 'portfolio'].includes(type)
+                                }">
+                                    <div class="mb-3">
+                                        <h5 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                                            <span :class="getArtifactTypeBadge({type: type}).class" 
+                                                  class="px-2 py-1 rounded text-xs font-medium uppercase">
+                                                <i :class="'fa ' + getArtifactTypeBadge({type: type}).icon + ' mr-1'"></i>
+                                                <span x-text="type"></span>
+                                            </span>
+                                            <span class="text-xs text-gray-500">
+                                                (<span x-text="artifacts.length"></span> <span x-text="artifacts.length === 1 ? 'artifact' : 'artifacts'"></span>)
+                                            </span>
+                                        </h5>
+                                    </div>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <template x-for="artifact in artifacts" :key="artifact.id">
+                                            <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer" 
+                                                 @click="viewArtifact(artifact)">
+                                                <div class="flex justify-between items-start mb-3">
+                                                    <span :class="getArtifactTypeBadge(artifact).class" 
+                                                          class="px-2 py-1 rounded text-xs font-medium uppercase">
+                                                        <i :class="'fa ' + getArtifactTypeBadge(artifact).icon + ' mr-1'"></i>
+                                                        <span x-text="getArtifactTypeBadge(artifact).label"></span>
+                                                    </span>
+                                                    <i class="fa fa-external-link-alt text-gray-400 text-sm"></i>
+                                                </div>
+                                                <h4 class="font-semibold text-gray-900 mb-2 line-clamp-2" x-text="artifact.name"></h4>
+                                                <div class="space-y-1 text-sm text-gray-600">
+                                                    <div x-show="artifact.step_name">
+                                                        <i class="fa fa-tasks mr-1 text-xs"></i>
+                                                        <span x-text="artifact.step_name"></span>
+                                                    </div>
+                                                    <div x-show="artifact.symbol">
+                                                        <i class="fa fa-chart-line mr-1 text-xs"></i>
+                                                        <span x-text="artifact.symbol"></span>
+                                                    </div>
+                                                    <div class="text-xs text-gray-500">
+                                                        <i class="fa fa-clock mr-1"></i>
+                                                        <span x-text="formatDate(artifact.created_at)"></span>
+                                                    </div>
+                                                    <!-- Show order/trade/portfolio specific info -->
+                                                    <template x-if="getArtifactType(artifact) === 'order' && artifact.signal_data">
+                                                        <div>
+                                                            <i class="fa fa-shopping-cart mr-1 text-xs"></i>
+                                                            <span x-text="artifact.signal_data.side"></span> 
+                                                            <span x-text="artifact.signal_data.quantity"></span> @ 
+                                                            <span x-text="artifact.signal_data.price ? '$' + artifact.signal_data.price : 'N/A'"></span>
+                                                        </div>
+                                                    </template>
+                                                    <template x-if="getArtifactType(artifact) === 'trade' && artifact.signal_data">
+                                                        <div>
+                                                            <i class="fa fa-exchange-alt mr-1 text-xs"></i>
+                                                            <span x-text="artifact.signal_data.quantity"></span> @ 
+                                                            <span x-text="'$' + artifact.signal_data.price"></span>
+                                                        </div>
+                                                    </template>
+                                                    <template x-if="getArtifactType(artifact) === 'portfolio' && artifact.signal_data">
+                                                        <div>
+                                                            <i class="fa fa-wallet mr-1 text-xs"></i>
+                                                            <span x-text="artifact.signal_data.position_count"></span> positions, 
+                                                            <span x-text="'$' + artifact.signal_data.total_value.toFixed(2)"></span>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+
+        <!-- Empty State for Grouped View -->
+        <div x-show="Object.keys(groupedArtifacts).length === 0" class="text-center py-12">
+            <i class="fa fa-inbox text-6xl text-gray-300 mb-4"></i>
+            <p class="text-gray-600 text-lg">No artifacts found</p>
+            <p class="text-gray-500 text-sm mt-2">Trigger a workflow in Airflow to generate artifacts</p>
+        </div>
+    </div>
+
+    <!-- Flat View (Original Grid) -->
+    <div x-show="viewMode === 'flat'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <template x-for="artifact in filteredArtifacts" :key="artifact.id">
+            <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow cursor-pointer" @click="viewArtifact(artifact)">
+                <div class="p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex gap-2">
+                            <span :class="{
+                                'bg-purple-100 text-purple-800': artifact.type === 'llm',
+                                'bg-blue-100 text-blue-800': artifact.type === 'chart',
+                                'bg-yellow-100 text-yellow-800': artifact.type === 'signal'
+                            }" class="px-2 py-1 rounded text-xs font-medium uppercase">
+                                <i :class="{
+                                    'fa fa-robot': artifact.type === 'llm',
+                                    'fa fa-chart-bar': artifact.type === 'chart',
+                                    'fa fa-bolt': artifact.type === 'signal'
+                                }"></i>
+                                <span x-text="artifact.type"></span>
+                            </span>
+                            <span x-show="artifact.symbol" class="bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs font-medium" x-text="artifact.symbol"></span>
+                        </div>
+                        <span class="text-xs text-gray-500" x-text="formatDate(artifact.created_at)"></span>
+                    </div>
+                    
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2" x-text="artifact.name || 'Untitled'"></h3>
+                    
+                    <!-- Type-specific preview -->
+                    <template x-if="artifact.type === 'chart' && artifact.image_path">
+                        <div class="mt-3">
+                            <!-- Display image using proxy endpoint -->
+                            <img :src="'/api/artifacts/' + artifact.id + '/image'" :alt="artifact.name" class="rounded-lg w-full" @error="$el.parentElement.innerHTML = '<div class=\'bg-gray-100 rounded-lg p-3 text-sm text-gray-600\'><i class=\'fa fa-image mr-2\'></i>Chart image not available</div>'">
+                        </div>
+                    </template>
+                    
+                    <template x-if="artifact.type === 'llm'">
+                        <div class="mt-3 text-sm text-gray-600 space-y-2">
+                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                <div class="font-medium text-gray-700 mb-1"><i class="fa fa-comment mr-1"></i> Prompt</div>
+                                <div class="text-xs text-gray-600 whitespace-pre-wrap max-h-32 overflow-y-auto" x-text="artifact.prompt || 'No prompt available'"></div>
+                                <div class="text-xs text-gray-500 mt-1" x-text="'(' + (artifact.prompt_length || 0) + ' chars)'"></div>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                <div class="font-medium text-gray-700 mb-1"><i class="fa fa-reply mr-1"></i> Response</div>
+                                <div class="text-xs text-gray-600 whitespace-pre-wrap max-h-32 overflow-y-auto" x-text="artifact.response || 'No response available'"></div>
+                                <div class="text-xs text-gray-500 mt-1" x-text="'(' + (artifact.response_length || 0) + ' chars)'"></div>
+                            </div>
+                            <div x-show="artifact.model_name" class="text-xs text-gray-500">
+                                <i class="fa fa-cog mr-1"></i> Model: <span x-text="artifact.model_name"></span>
+                            </div>
+                        </div>
+                    </template>
+                    
+                    <template x-if="artifact.type === 'signal'">
+                        <div class="mt-3 text-sm text-gray-600 space-y-1">
+                            <div><strong>Action:</strong> <span x-text="artifact.action || 'N/A'"></span></div>
+                            <div><strong>Confidence:</strong> <span x-text="artifact.confidence || 'N/A'"></span></div>
+                        </div>
+                    </template>
+                    
+                    <template x-if="artifact.run_id">
+                        <div class="mt-3 text-xs text-gray-500">
+                            <i class="fa fa-tag mr-1"></i> Run: <span x-text="artifact.run_id.substring(0, 8)"></span>...
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Empty State -->
+    <div x-show="filteredArtifacts.length === 0" class="text-center py-12">
+        <i class="fa fa-inbox text-6xl text-gray-300 mb-4"></i>
+        <p class="text-gray-500 text-lg">No artifacts found</p>
+        <button x-show="filterType !== 'all' || searchTerm" @click="clearFilters()" class="mt-4 text-blue-600 hover:text-blue-800">
+            Clear filters
+        </button>
+    </div>
+</div>
+
+<script>
+function artifactsData() {
+    return {
+        isLive: true,
+        lastUpdate: 'Loading...',
+        artifacts: [],
+        filteredArtifacts: [],
+        groupedArtifacts: {},
+        expandedGroups: [],
+        viewMode: sessionStorage.getItem('artifactViewMode') || 'grouped',
+        llmCount: 0,
+        chartCount: 0,
+        signalCount: 0,
+        todayCount: 0,
+        filterType: 'all',
+        searchTerm: '',
+        sortBy: 'date-desc',
+        
+        async init() {
+            await this.loadArtifacts();
+            setInterval(() => this.loadArtifacts(), 60000);
+        },
+        
+        async loadArtifacts() {
+            try {
+                const response = await fetch('/api/artifacts/');
+                const data = await response.json();
+                this.artifacts = data.artifacts || [];
+                this.updateMetrics();
+                this.filterArtifacts();
+                this.lastUpdate = new Date().toLocaleTimeString();
+                this.isLive = true;
+            } catch (error) {
+                console.error('Error loading artifacts:', error);
+                this.isLive = false;
+            }
+        },
+        
+        updateMetrics() {
+            this.llmCount = this.artifacts.filter(a => a.type === 'llm').length;
+            this.chartCount = this.artifacts.filter(a => a.type === 'chart').length;
+            // Count signals, orders, trades, portfolio
+            this.signalCount = this.artifacts.filter(a => {
+                if (a.type === 'signal') {
+                    const artifactType = a.signal_data?.artifact_type;
+                    return !artifactType || artifactType === 'signal';
+                }
+                return false;
+            }).length;
+            
+            const today = new Date().toDateString();
+            this.todayCount = this.artifacts.filter(a => {
+                return new Date(a.created_at).toDateString() === today;
+            }).length;
+        },
+        
+        filterArtifacts() {
+            let filtered = this.artifacts;
+            
+            // Filter by type
+            if (this.filterType !== 'all') {
+                if (this.filterType in ['order', 'trade', 'portfolio']) {
+                    // Filter by artifact_type in signal_data
+                    filtered = filtered.filter(a => 
+                        a.type === 'signal' && 
+                        a.signal_data?.artifact_type === this.filterType
+                    );
+                } else {
+                    filtered = filtered.filter(a => {
+                        if (a.type === 'signal') {
+                            // Exclude order/trade/portfolio when filtering for signals
+                            const artifactType = a.signal_data?.artifact_type;
+                            return !artifactType || artifactType === 'signal';
+                        }
+                        return a.type === this.filterType;
+                    });
+                }
+            }
+            
+            // Filter by search term
+            if (this.searchTerm) {
+                const term = this.searchTerm.toLowerCase();
+                filtered = filtered.filter(a =>
+                    (a.name && a.name.toLowerCase().includes(term)) ||
+                    (a.symbol && a.symbol.toLowerCase().includes(term)) ||
+                    (a.run_id && a.run_id.toLowerCase().includes(term))
+                );
+            }
+            
+            // Sort
+            filtered.sort((a, b) => {
+                switch (this.sortBy) {
+                    case 'date-asc':
+                        return new Date(a.created_at) - new Date(b.created_at);
+                    case 'date-desc':
+                        return new Date(b.created_at) - new Date(a.created_at);
+                    case 'type':
+                        return (a.type || '').localeCompare(b.type || '');
+                    default:
+                        return new Date(b.created_at) - new Date(a.created_at);
+                }
+            });
+            
+            this.filteredArtifacts = filtered;
+            this.groupArtifacts(filtered);
+        },
+        
+        groupArtifacts(artifacts) {
+            // Group artifacts by execution_id/run_id, then symbol, then type
+            // Structure: {runId: {symbols: {symbol: {types: {type: [artifacts]}, metadata: {...}}}, metadata: {...}}}
+            const grouped = {};
+            
+            artifacts.forEach(artifact => {
+                // Use execution_id or run_id as primary grouping key
+                const runId = artifact.execution_id || artifact.run_id || 'Unknown Run';
+                const symbol = artifact.symbol || 'No Symbol';
+                const artifactType = this.getArtifactType(artifact);
+                
+                // Initialize run group
+                if (!grouped[runId]) {
+                    grouped[runId] = {
+                        symbols: {},
+                        metadata: {
+                            runId: runId,
+                            workflowId: artifact.workflow_id || artifact.dag_id || 'Unknown Workflow',
+                            totalCount: 0,
+                            symbolCounts: {},
+                            mostRecentDate: null,
+                            firstArtifact: artifact
+                        }
+                    };
+                }
+                
+                // Initialize symbol group within run
+                if (!grouped[runId].symbols[symbol]) {
+                    grouped[runId].symbols[symbol] = {
+                        types: {},
+                        metadata: {
+                            symbol: symbol,
+                            totalCount: 0,
+                            typeCounts: {},
+                            mostRecentDate: null
+                        }
+                    };
+                }
+                
+                // Initialize type group within symbol
+                if (!grouped[runId].symbols[symbol].types[artifactType]) {
+                    grouped[runId].symbols[symbol].types[artifactType] = [];
+                }
+                
+                grouped[runId].symbols[symbol].types[artifactType].push(artifact);
+                
+                // Update run metadata
+                grouped[runId].metadata.totalCount++;
+                grouped[runId].metadata.symbolCounts[symbol] = (grouped[runId].metadata.symbolCounts[symbol] || 0) + 1;
+                
+                // Update symbol metadata
+                grouped[runId].symbols[symbol].metadata.totalCount++;
+                grouped[runId].symbols[symbol].metadata.typeCounts[artifactType] = (grouped[runId].symbols[symbol].metadata.typeCounts[artifactType] || 0) + 1;
+                
+                const artifactDate = new Date(artifact.created_at);
+                if (!grouped[runId].metadata.mostRecentDate || artifactDate > grouped[runId].metadata.mostRecentDate) {
+                    grouped[runId].metadata.mostRecentDate = artifactDate;
+                }
+                if (!grouped[runId].symbols[symbol].metadata.mostRecentDate || artifactDate > grouped[runId].symbols[symbol].metadata.mostRecentDate) {
+                    grouped[runId].symbols[symbol].metadata.mostRecentDate = artifactDate;
+                }
+            });
+            
+            // Sort artifacts within each type group by created_at (newest first)
+            Object.keys(grouped).forEach(runId => {
+                Object.keys(grouped[runId].symbols).forEach(symbol => {
+                    Object.keys(grouped[runId].symbols[symbol].types).forEach(type => {
+                        grouped[runId].symbols[symbol].types[type].sort((a, b) => {
+                            return new Date(b.created_at) - new Date(a.created_at);
+                        });
+                    });
+                });
+            });
+            
+            // Sort runs by most recent date, then symbols alphabetically
+            const sortedGroups = {};
+            const runs = Object.keys(grouped).sort((a, b) => {
+                const dateA = grouped[a].metadata.mostRecentDate || new Date(0);
+                const dateB = grouped[b].metadata.mostRecentDate || new Date(0);
+                return dateB - dateA; // Most recent first
+            });
+            
+            runs.forEach(runId => {
+                const run = grouped[runId];
+                // Sort symbols within run
+                const sortedSymbols = {};
+                const symbols = Object.keys(run.symbols).sort((a, b) => {
+                    if (a === 'No Symbol') return 1;
+                    if (b === 'No Symbol') return -1;
+                    return a.localeCompare(b);
+                });
+                symbols.forEach(symbol => {
+                    sortedSymbols[symbol] = run.symbols[symbol];
+                });
+                sortedGroups[runId] = {
+                    symbols: sortedSymbols,
+                    metadata: run.metadata
+                };
+            });
+            
+            this.groupedArtifacts = sortedGroups;
+            
+            // Expand first run by default
+            if (Object.keys(sortedGroups).length > 0 && this.expandedGroups.length === 0) {
+                this.expandedGroups = [Object.keys(sortedGroups)[0]];
+            }
+        },
+        
+        getArtifactType(artifact) {
+            // Determine actual artifact type (handles order/trade/portfolio stored as signal)
+            if (artifact.type === 'signal' && artifact.signal_data?.artifact_type) {
+                return artifact.signal_data.artifact_type;
+            }
+            return artifact.type;
+        },
+        
+        getArtifactTypeBadge(artifact) {
+            const type = this.getArtifactType(artifact);
+            const badges = {
+                'llm': { class: 'bg-purple-100 text-purple-800', icon: 'fa-robot', label: 'LLM' },
+                'chart': { class: 'bg-blue-100 text-blue-800', icon: 'fa-chart-bar', label: 'Chart' },
+                'signal': { class: 'bg-yellow-100 text-yellow-800', icon: 'fa-bolt', label: 'Signal' },
+                'order': { class: 'bg-green-100 text-green-800', icon: 'fa-shopping-cart', label: 'Order' },
+                'trade': { class: 'bg-orange-100 text-orange-800', icon: 'fa-exchange-alt', label: 'Trade' },
+                'portfolio': { class: 'bg-teal-100 text-teal-800', icon: 'fa-wallet', label: 'Portfolio' }
+            };
+            return badges[type] || { class: 'bg-gray-100 text-gray-800', icon: 'fa-question', label: type };
+        },
+        
+        toggleGroup(execution_id) {
+            const index = this.expandedGroups.indexOf(execution_id);
+            if (index > -1) {
+                this.expandedGroups.splice(index, 1);
+            } else {
+                this.expandedGroups.push(execution_id);
+            }
+        },
+        
+        clearFilters() {
+            this.filterType = 'all';
+            this.searchTerm = '';
+            this.filterArtifacts();
+        },
+        
+        async refreshArtifacts() {
+            await this.loadArtifacts();
+        },
+        
+        viewArtifact(artifact) {
+            // Navigate to artifact detail page
+            window.location.href = `/artifacts/${artifact.id}`;
+        },
+        
+        formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} min ago`;
+            if (diffMins < 1440) return `${Math.floor(diffMins / 60)} hours ago`;
+            
+            return date.toLocaleDateString();
+        }
+    }
+}
+</script>
+{% endblock %}

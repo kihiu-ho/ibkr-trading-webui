@@ -29,48 +29,116 @@ from models.market_data import MarketData
 logger = logging.getLogger(__name__)
 
 
-ANALYSIS_PROMPT = """You are an expert technical analyst. Analyze the following stock charts and provide a trading recommendation.
+ANALYSIS_PROMPT = """You are a professional technical analyst specializing in medium-term trading (30-180 days holding period) based on daily and weekly candle charts. Please analyze using the following framework.
 
 You are provided with:
-1. A DAILY chart showing recent price action and technical indicators
-2. A WEEKLY chart for longer-term context
+1. A DAILY chart showing recent price action and technical indicators (primary analysis)
+2. A WEEKLY chart for longer-term trend confirmation
 
-Technical indicators included:
-- SMA (20, 50, 200): Moving averages showing trend
-- RSI (14): Momentum indicator (>70 overbought, <30 oversold)
-- MACD: Trend and momentum indicator
-- Bollinger Bands: Volatility and support/resistance levels
-- Volume: Trading activity
+Please provide a comprehensive analysis following this structured framework:
 
-Please analyze and provide:
-1. **action**: BUY, SELL, or HOLD
-2. **confidence**: HIGH (80-100%), MEDIUM (50-79%), or LOW (0-49%)
-3. **confidence_score**: Numerical score 0-100
-4. **reasoning**: Detailed explanation of your decision (minimum 50 words)
-5. **key_factors**: List of 3-5 key factors influencing your decision
-6. **trend**: Current trend (bullish/bearish/neutral)
-7. **support_level**: Identified support price level
-8. **resistance_level**: Identified resistance price level
-9. **suggested_entry_price**: Recommended entry price
-10. **suggested_stop_loss**: Recommended stop loss price
-11. **suggested_take_profit**: Recommended take profit price
+## 1. Core Price Analysis
+- Current price and trend overview
+- Key support/resistance levels
+- Important candlestick patterns and price structure
+- Chart time range: Daily chart (primary) and Weekly chart (confirmation)
 
+## 2. Trend Indicator Analysis
+
+A. SuperTrend (10,3):
+   - Current state: [uptrend/downtrend]
+   - Signal color: [green/red]
+   - Relative position to price and recent changes
+
+B. Moving Average System:
+   - 20-day SMA: Short-term trend direction
+   - 50-day SMA: Medium-term trend direction
+   - 200-day SMA: Long-term trend direction
+   - Golden/Death cross situations
+   - Price relationship to moving averages (support/resistance)
+
+## 3. Confirmation Indicator Analysis
+
+A. Momentum Confirmation:
+   - MACD (12,26,9): Status and signals
+   - RSI (14): Levels and direction [overbought/oversold/neutral]
+
+B. Volatility Analysis:
+   - ATR (14): Values and trends
+   - Bollinger Bands (20,2): Width and price position
+
+C. Volume Analysis:
+   - Current volume vs 20-day average
+   - Volume trend characteristics
+   - OBV trends and price confirmation
+
+## 4. Signal Confirmation System (3/4 Rule)
+At least 3 of 4 signals must confirm the trading direction:
+- SuperTrend signal direction [bullish/bearish]
+- Price relationship to 20-day SMA [above/below]
+- MACD signal line crossover [buy/sell]
+- RSI relative position [>50 bullish/<50 bearish]
+
+## 5. Trading Recommendations
+- Overall trend judgment: [strongly bullish/bullish/neutral/bearish/strongly bearish]
+- Trading signal: [entry/hold/exit]
+
+A. If bullish (long):
+   - Entry price range: [price range]
+   - Stop loss: Entry price - (2 × ATR), approximately [specific value]
+   - Profit targets:
+     * First target (conservative): [value] - Based on [support/resistance/chart pattern/indicator level]
+     * Second target (aggressive): [value] - Based on [support/resistance/chart pattern/indicator level]
+   - R-multiple calculation: (Target - Entry) ÷ (Entry - Stop Loss) = ?R
+
+B. If bearish (short):
+   - Entry price range: [price range]
+   - Stop loss: Entry price + (2 × ATR), approximately [specific value]
+   - Profit targets:
+     * First target (conservative): [value] - Based on [support/resistance/chart pattern/indicator level]
+     * Second target (aggressive): [value] - Based on [support/resistance/chart pattern/indicator level]
+   - R-multiple calculation: (Entry - Target) ÷ (Stop Loss - Entry) = ?R
+
+- Suggested position size: [% based on fixed risk management]
+
+## Target Price Setting Reference Framework
+When setting target prices, consider these technical factors:
+1. Previous support/resistance levels: Historical highs/lows, trading dense areas
+2. Chart pattern projections: Head and shoulders, triangles, flags, wedges, etc.
+3. Fibonacci levels: Extensions (127.2%, 161.8%) or retracements (38.2%, 50%, 61.8%)
+4. Bollinger Band targets: Upper/lower bands or width projections
+5. Moving average targets: Important EMA/SMA positions or crossover points
+6. Volume targets: Volume distribution peaks, volume force field highs/lows
+7. Volatility projections: Based on ATR (e.g., 3×ATR volatility range)
+
+Each target price must include at least one technical basis and explain why it is a reasonable price target.
+
+## 6. Risk Assessment
+- Main technical risk factors
+- Key reversal prices and alert points
+- Potential signal failure scenarios
+- Weekly chart confirmation status
+- How to manage and mitigate identified risks
+
+## Response Format
 Respond ONLY with valid JSON in this exact format:
 {
   "action": "BUY|SELL|HOLD",
   "confidence": "HIGH|MEDIUM|LOW",
   "confidence_score": 85.5,
-  "reasoning": "Detailed explanation...",
-  "key_factors": ["Factor 1", "Factor 2", "Factor 3"],
-  "trend": "bullish|bearish|neutral",
+  "reasoning": "Detailed explanation covering all 6 sections above (minimum 200 words)...",
+  "key_factors": ["Factor 1", "Factor 2", "Factor 3", "Factor 4", "Factor 5"],
+  "trend": "strongly bullish|bullish|neutral|bearish|strongly bearish",
   "support_level": 245.00,
   "resistance_level": 265.00,
   "suggested_entry_price": 250.00,
   "suggested_stop_loss": 245.00,
-  "suggested_take_profit": 265.00
+  "suggested_take_profit": 265.00,
+  "r_multiple": 2.5,
+  "position_size_percent": 5.0
 }
 
-Be conservative and focus on risk management. Only recommend BUY/SELL with HIGH confidence if there is strong technical evidence.
+Important: Only recommend BUY/SELL when at least 3 of 4 signals confirm. Be conservative and focus on risk management. Weekly chart analysis serves as trend confirmation only - do not provide separate weekly trend confirmation analysis in the response.
 """
 
 
@@ -236,7 +304,7 @@ class LLMSignalAnalyzer:
                     ]
                 }
             ],
-            max_tokens=1000,
+            max_tokens=2000,
             temperature=0.3
         )
         
@@ -256,7 +324,7 @@ class LLMSignalAnalyzer:
         """Analyze with Anthropic Claude"""
         response = self.client.messages.create(
             model=self.model,
-            max_tokens=1000,
+            max_tokens=2000,
             messages=[
                 {
                     "role": "user",
@@ -315,6 +383,8 @@ class LLMSignalAnalyzer:
             suggested_entry_price=Decimal(str(signal_data["suggested_entry_price"])) if signal_data.get("suggested_entry_price") else None,
             suggested_stop_loss=Decimal(str(signal_data["suggested_stop_loss"])) if signal_data.get("suggested_stop_loss") else None,
             suggested_take_profit=Decimal(str(signal_data["suggested_take_profit"])) if signal_data.get("suggested_take_profit") else None,
+            r_multiple=Decimal(str(signal_data["r_multiple"])) if signal_data.get("r_multiple") else None,
+            position_size_percent=Decimal(str(signal_data["position_size_percent"])) if signal_data.get("position_size_percent") else None,
             timeframe_analyzed="daily+weekly",
             model_used=f"{provider}/{self.model}"
         )

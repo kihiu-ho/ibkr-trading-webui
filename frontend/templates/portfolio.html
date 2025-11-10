@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block title %}Portfolio & Positions{% endblock %}
+{% block page_title %}Portfolio & Positions{% endblock %}
+
+{% block content %}
+<div x-data="portfolioData()" x-init="init()">
+    <!-- Header Actions -->
+    <div class="flex justify-between items-center mb-6">
+        <div class="flex items-center gap-x-4">
+            <span class="relative flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" x-show="isLive"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3" :class="isLive ? 'bg-green-500' : 'bg-gray-500'"></span>
+            </span>
+            <span class="text-sm text-gray-700" x-text="isLive ? 'Live' : 'Offline'"></span>
+            <span class="text-sm text-gray-500">Last updated: <span x-text="lastUpdate"></span></span>
+        </div>
+        <div class="flex gap-x-2">
+            <button @click="syncPositions()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition">
+                <i class="fa fa-sync mr-2"></i>Sync with IBKR
+            </button>
+            <button @click="refreshPortfolio()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+                <i class="fa fa-refresh mr-2"></i>Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Portfolio Metrics Cards -->
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+        <!-- Total Portfolio Value -->
+        <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-lg overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-wallet text-3xl text-white opacity-75"></i>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-white opacity-90 truncate">Total Value</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-white" x-text="formatCurrency(totalValue)">$0.00</div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Total P&L -->
+        <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-lg overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-chart-line text-3xl text-white opacity-75"></i>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-white opacity-90 truncate">Total P&L</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-white" x-text="formatCurrency(totalPnL)">$0.00</div>
+                                <div class="text-sm text-white opacity-90" x-text="pnlPercent + '%'">0.00%</div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Positions Count -->
+        <div class="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg shadow-lg overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-briefcase text-3xl text-white opacity-75"></i>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-white opacity-90 truncate">Positions</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-white" x-text="positionCount">0</div>
+                                <div class="text-sm text-white opacity-90">
+                                    <span class="text-green-200" x-text="longCount + ' Long'"></span>
+                                    <span class="mx-1">/</span>
+                                    <span class="text-red-200" x-text="shortCount + ' Short'"></span>
+                                </div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Day P&L -->
+        <div class="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg shadow-lg overflow-hidden">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-calendar-day text-3xl text-white opacity-75"></i>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-white opacity-90 truncate">Day P&L</dt>
+                            <dd>
+                                <div class="text-2xl font-bold text-white" x-text="formatCurrency(dayPnL)">$0.00</div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Positions Table -->
+    <div class="bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">
+                    <i class="fa fa-list mr-2"></i>All Positions
+                </h3>
+                <input type="text" x-model="searchTerm" @input="filterPositions()" 
+                       placeholder="Search by symbol or contract ID..." 
+                       class="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            </div>
+            
+            <!-- Positions Table -->
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contract ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Side</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Price</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Market Value</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unrealized P&L</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <template x-for="position in filteredPositions" :key="position.conid">
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" x-text="position.symbol || 'N/A'"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="position.conid"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <span :class="(position.quantity || 0) >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'" 
+                                          class="px-2 py-1 text-xs font-medium rounded">
+                                        <span x-text="(position.quantity || 0) >= 0 ? 'LONG' : 'SHORT'"></span>
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="Math.abs(position.quantity || 0)"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatCurrency(position.avg_price)"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatCurrency(position.current_price)"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatCurrency(position.market_value)"></td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <span :class="(position.unrealized_pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'" class="font-medium">
+                                        <i :class="(position.unrealized_pnl || 0) >= 0 ? 'fa fa-arrow-up' : 'fa fa-arrow-down'" class="mr-1"></i>
+                                        <span x-text="formatCurrency(position.unrealized_pnl)"></span>
+                                    </span>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="filteredPositions.length === 0">
+                            <td colspan="8" class="px-6 py-4 text-center text-sm text-gray-500">
+                                <i class="fa fa-inbox text-4xl text-gray-300 mb-2"></i>
+                                <p>No positions found</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function portfolioData() {
+    return {
+        isLive: true,
+        lastUpdate: 'Loading...',
+        totalValue: 0,
+        totalPnL: 0,
+        pnlPercent: 0,
+        positionCount: 0,
+        dayPnL: 0,
+        longCount: 0,
+        shortCount: 0,
+        positions: [],
+        filteredPositions: [],
+        searchTerm: '',
+        
+        async init() {
+            await this.loadPortfolio();
+            setInterval(() => this.loadPortfolio(), 30000); // Auto-refresh every 30s
+        },
+        
+        async loadPortfolio() {
+            try {
+                // Fetch positions from IBKR
+                const positionsResponse = await fetch('/api/positions/');
+                const positionsData = await positionsResponse.json();
+                this.positions = positionsData.positions || [];
+                this.filteredPositions = this.positions;
+                
+                // Calculate long/short counts
+                this.longCount = this.positions.filter(p => (p.quantity || 0) > 0).length;
+                this.shortCount = this.positions.filter(p => (p.quantity || 0) < 0).length;
+                this.positionCount = this.positions.length;
+                
+                // Fetch portfolio value
+                const valueResponse = await fetch('/api/positions/portfolio/value');
+                const valueData = await valueResponse.json();
+                
+                // Update metrics from both endpoints
+                this.totalValue = valueData.total_value || 0;
+                this.totalPnL = valueData.total_unrealized_pnl || 0;
+                this.dayPnL = valueData.day_pnl || 0;
+                
+                // Calculate percentage
+                const totalCost = valueData.total_cost || 0;
+                this.pnlPercent = totalCost > 0 ? ((this.totalPnL / totalCost) * 100).toFixed(2) : 0;
+                
+                this.lastUpdate = new Date().toLocaleTimeString();
+                this.isLive = true;
+            } catch (error) {
+                console.error('Error loading portfolio:', error);
+                this.isLive = false;
+            }
+        },
+        
+        filterPositions() {
+            const term = this.searchTerm.toLowerCase();
+            this.filteredPositions = this.positions.filter(p =>
+                (p.symbol && p.symbol.toLowerCase().includes(term)) ||
+                (p.conid && p.conid.toString().includes(term))
+            );
+        },
+        
+        async syncPositions() {
+            try {
+                const response = await fetch('/api/positions/sync', { method: 'POST' });
+                const data = await response.json();
+                await this.loadPortfolio();
+                alert('Positions synced successfully!');
+            } catch (error) {
+                console.error('Error syncing positions:', error);
+                alert('Failed to sync positions');
+            }
+        },
+        
+        async refreshPortfolio() {
+            await this.loadPortfolio();
+        },
+        
+        formatCurrency(value) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD'
+            }).format(value || 0);
+        }
+    }
+}
+</script>
+{% endblock %}

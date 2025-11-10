@@ -34,17 +34,18 @@ celery_app.conf.task_routes = {
 # Celery Beat schedule for periodic tasks
 celery_app.conf.beat_schedule = {
     # Strategy execution scheduler - runs every minute
-    'check-and-execute-strategies': {
-        'task': 'check_and_execute_strategies',
-        'schedule': 60.0,  # Run every 60 seconds
-        'options': {'queue': 'workflows'}
-    },
+    # Temporarily disabled until strategy_service is implemented
+    # 'check-and-execute-strategies': {
+    #     'task': 'check_and_execute_strategies',
+    #     'schedule': 60.0,  # Run every 60 seconds
+    #     'options': {'queue': 'workflows'}
+    # },
     # Recalculate strategy schedules - runs every hour
-    'recalculate-strategy-schedules': {
-        'task': 'recalculate_strategy_schedules',
-        'schedule': crontab(minute=0),  # Every hour at :00
-        'options': {'queue': 'default'}
-    },
+    # 'recalculate-strategy-schedules': {
+    #     'task': 'recalculate_strategy_schedules',
+    #     'schedule': crontab(minute=0),  # Every hour at :00
+    #     'options': {'queue': 'default'}
+    # },
     # Prompt performance calculation - runs daily
     'calculate-prompt-performance-daily': {
         'task': 'calculate_prompt_performance_daily',
@@ -59,12 +60,13 @@ celery_app.conf.beat_schedule = {
         'options': {'queue': 'default'}
     },
     # Cleanup inactive strategies - runs weekly
-    'cleanup-inactive-strategies-weekly': {
-        'task': 'cleanup_inactive_strategies',
-        'schedule': crontab(day_of_week=0, hour=3, minute=0),  # Sunday at 3:00 AM UTC
-        'args': (90,),  # 90 days of inactivity
-        'options': {'queue': 'default'}
-    },
+    # Temporarily disabled until strategy_service is implemented
+    # 'cleanup-inactive-strategies-weekly': {
+    #     'task': 'cleanup_inactive_strategies',
+    #     'schedule': crontab(day_of_week=0, hour=3, minute=0),  # Sunday at 3:00 AM UTC
+    #     'args': (90,),  # 90 days of inactivity
+    #     'options': {'queue': 'default'}
+    # },
     # Monitor active orders - runs every minute
     'monitor-active-orders': {
         'task': 'monitor_active_orders',
@@ -87,7 +89,8 @@ celery_app.conf.beat_schedule = {
 }
 
 # Import tasks to register them with Celery
-from backend.tasks import strategy_tasks  # noqa: F401
+# Temporarily disabled until strategy_service is implemented
+# from backend.tasks import strategy_tasks  # noqa: F401
 from backend.tasks import order_tasks  # noqa: F401
 from backend.tasks import prompt_performance_tasks  # noqa: F401
 # from backend.tasks import workflow_tasks

@@ -38,7 +38,7 @@ class Decision(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     
     # Relationships
-    strategy = relationship("Strategy", back_populates="decisions")
+    # strategy = relationship("Strategy", back_populates="decisions")  # Removed - strategies feature deprecated
     
     def __repr__(self):
         return f"<Decision(id={self.id}, strategy_id={self.strategy_id}, type={self.type}, current_price={self.current_price})>"

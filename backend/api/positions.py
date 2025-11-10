@@ -25,7 +25,8 @@ async def list_positions(
     """
     try:
         manager = get_position_manager(db)
-        positions = await manager.get_all_positions(strategy_id, include_closed)
+        # Note: strategy_id parameter removed as Position model doesn't have strategy_id
+        positions = await manager.get_all_positions(include_closed)
         
         return {
             "positions": [pos.to_dict() for pos in positions],
@@ -47,7 +48,8 @@ async def get_position(
     """Get a specific position by contract ID."""
     try:
         manager = get_position_manager(db)
-        position = await manager.get_position(conid, strategy_id)
+        # Note: strategy_id parameter removed as Position model doesn't have strategy_id
+        position = await manager.get_position(conid)
         
         if not position:
             raise HTTPException(status_code=404, detail="Position not found")
@@ -78,7 +80,8 @@ async def get_portfolio_value(
     """
     try:
         manager = get_position_manager(db)
-        portfolio = await manager.calculate_portfolio_value(strategy_id)
+        # Note: strategy_id parameter removed as Position model doesn't have strategy_id
+        portfolio = await manager.calculate_portfolio_value()
         
         return portfolio
     except Exception as e:
@@ -98,7 +101,8 @@ async def sync_positions(
     """
     try:
         manager = get_position_manager(db)
-        result = await manager.sync_with_ibkr(strategy_id)
+        # Note: strategy_id parameter removed as Position model doesn't have strategy_id
+        result = await manager.sync_with_ibkr()
         
         return result
     except Exception as e:
@@ -116,13 +120,14 @@ async def get_all_risk_metrics(
     """
     try:
         manager = get_position_manager(db)
-        positions = await manager.get_all_positions(strategy_id, include_closed=False)
+        # Note: strategy_id parameter removed as Position model doesn't have strategy_id
+        positions = await manager.get_all_positions(include_closed=False)
         
         metrics_list = []
         for position in positions:
             metrics = await manager.get_position_risk_metrics(position)
             metrics['conid'] = position.conid
-            metrics['strategy_id'] = position.strategy_id
+            # Note: strategy_id removed as Position model doesn't have this field
             metrics_list.append(metrics)
         
         # Calculate aggregate risk

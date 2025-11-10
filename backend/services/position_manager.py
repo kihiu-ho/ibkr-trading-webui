@@ -54,10 +54,9 @@ class PositionManager:
         try:
             logger.info(f"Updating position from order fill: {order.id}")
             
-            # Find existing position
+            # Find existing position (by conid only, strategy_id not in model)
             position = self.db.query(Position).filter(
-                Position.conid == order.conid,
-                Position.strategy_id == order.strategy_id
+                Position.conid == order.conid
             ).first()
             
             if order.side == "BUY":
@@ -78,7 +77,7 @@ class PositionManager:
         if position:
             # Add to existing position
             old_quantity = position.quantity
-            old_avg_price = position.average_price
+            old_avg_price = position.average_cost
             
             new_quantity = old_quantity + order.filled_quantity
             new_avg_price = (
@@ -86,8 +85,8 @@ class PositionManager:
             ) / new_quantity
             
             position.quantity = new_quantity
-            position.average_price = new_avg_price
-            position.last_updated = datetime.now()
+            position.average_cost = new_avg_price
+            # updated_at is auto-managed by SQLAlchemy
             
             logger.info(
                 f"Updated position: {order.conid} from {old_quantity} to {new_quantity} "
@@ -97,12 +96,9 @@ class PositionManager:
             # Create new position
             position = Position(
                 conid=order.conid,
-                strategy_id=order.strategy_id,
                 quantity=order.filled_quantity,
-                average_price=order.filled_price,
-                last_price=order.filled_price,
-                last_updated=datetime.now(),
-                created_at=datetime.now()
+                average_cost=order.filled_price,
+                current_price=order.filled_price
             )
             self.db.add(position)
             logger.info(
@@ -129,7 +125,7 @@ class PositionManager:
             return None
         
         # Calculate realized P&L
-        realized_pnl = (order.filled_price - position.average_price) * order.filled_quantity
+        realized_pnl = (order.filled_price - position.average_cost) * order.filled_quantity
         
         # Update position
         position.quantity -= order.filled_quantity
@@ -141,11 +137,9 @@ class PositionManager:
             f"realized P&L=${realized_pnl:.2f}"
         )
         
-        # Close position if quantity is zero
+        # Position is closed if quantity is zero (no need to set is_closed as it's not in model)
         if position.quantity <= 0:
             logger.info(f"Position closed: {order.conid}")
-            position.is_closed = True
-            position.closed_at = datetime.now()
         
         self.db.commit()
         self.db.refresh(position)
@@ -161,12 +155,12 @@ class PositionManager:
             # Get current price from IBKR
             current_price = await self._get_current_price(position.conid)
             if current_price:
-                position.last_price = current_price
+                position.current_price = current_price
                 
-                # Calculate unrealized P&L
-                if not position.is_closed:
+                # Calculate unrealized P&L (only for open positions)
+                if position.quantity != 0:
                     position.unrealized_pnl = (
-                        (current_price - position.average_price) * position.quantity
+                        (current_price - position.average_cost) * position.quantity
                     )
                 else:
                     position.unrealized_pnl = 0
@@ -194,15 +188,13 @@ class PositionManager:
     
     async def get_all_positions(
         self,
-        strategy_id: Optional[int] = None,
         include_closed: bool = False
     ) -> List[Position]:
         """
-        Get all positions, optionally filtered by strategy.
+        Get all positions.
         
         Args:
-            strategy_id: Filter by strategy ID
-            include_closed: Include closed positions
+            include_closed: Include closed positions (quantity == 0)
             
         Returns:
             List of Position objects
@@ -210,53 +202,49 @@ class PositionManager:
         try:
             query = self.db.query(Position)
             
-            if strategy_id:
-                query = query.filter(Position.strategy_id == strategy_id)
+            # Note: strategy_id filtering removed as Position model doesn't have strategy_id
             
             if not include_closed:
-                query = query.filter(Position.is_closed == False)
+                # Filter out closed positions (quantity == 0)
+                query = query.filter(Position.quantity != 0)
             
-            positions = query.order_by(Position.last_updated.desc()).all()
+            positions = query.order_by(Position.updated_at.desc()).all()
             
-            logger.info(f"Retrieved {len(positions)} positions (strategy={strategy_id}, closed={include_closed})")
+            logger.info(f"Retrieved {len(positions)} positions (closed={include_closed})")
             return positions
             
         except Exception as e:
-            logger.error(f"Error getting positions: {str(e)}")
+            logger.error(f"Error getting positions: {str(e)}", exc_info=True)
+            self.db.rollback()
             return []
     
     async def get_position(
         self,
-        conid: int,
-        strategy_id: Optional[int] = None
+        conid: int
     ) -> Optional[Position]:
         """Get a specific position."""
         try:
             query = self.db.query(Position).filter(Position.conid == conid)
             
-            if strategy_id:
-                query = query.filter(Position.strategy_id == strategy_id)
+            # Note: strategy_id filtering removed as Position model doesn't have strategy_id
             
             return query.first()
         except Exception as e:
-            logger.error(f"Error getting position for {conid}: {str(e)}")
+            logger.error(f"Error getting position for {conid}: {str(e)}", exc_info=True)
+            self.db.rollback()
             return None
     
     async def calculate_portfolio_value(
-        self,
-        strategy_id: Optional[int] = None
+        self
     ) -> Dict[str, Any]:
         """
         Calculate total portfolio value and P&L.
         
-        Args:
-            strategy_id: Calculate for specific strategy only
-            
         Returns:
             Dictionary with portfolio metrics
         """
         try:
-            positions = await self.get_all_positions(strategy_id, include_closed=False)
+            positions = await self.get_all_positions(include_closed=False)
             
             # Update all positions with current prices
             for position in positions:
@@ -264,12 +252,12 @@ class PositionManager:
             
             # Calculate totals
             total_value = sum(
-                (pos.last_price or pos.average_price) * pos.quantity
+                (pos.current_price or pos.average_cost) * pos.quantity
                 for pos in positions
             )
             
             total_cost = sum(
-                pos.average_price * pos.quantity
+                pos.average_cost * pos.quantity
                 for pos in positions
             )
             
@@ -278,15 +266,19 @@ class PositionManager:
                 for pos in positions
             )
             
-            # Get realized P&L from closed positions
-            closed_query = self.db.query(
-                func.sum(Position.realized_pnl)
-            ).filter(Position.is_closed == True)
-            
-            if strategy_id:
-                closed_query = closed_query.filter(Position.strategy_id == strategy_id)
-            
-            total_realized_pnl = closed_query.scalar() or 0
+            # Get realized P&L from closed positions (quantity == 0)
+            try:
+                closed_query = self.db.query(
+                    func.sum(Position.realized_pnl)
+                ).filter(Position.quantity == 0)
+                
+                # Note: strategy_id filtering removed as Position model doesn't have strategy_id
+                
+                total_realized_pnl = closed_query.scalar() or 0
+            except Exception as e:
+                logger.warning(f"Error calculating realized P&L: {str(e)}")
+                self.db.rollback()
+                total_realized_pnl = 0
             
             # Calculate returns
             total_pnl = total_realized_pnl + total_unrealized_pnl
@@ -312,6 +304,7 @@ class PositionManager:
             
         except Exception as e:
             logger.error(f"Error calculating portfolio value: {str(e)}", exc_info=True)
+            self.db.rollback()
             return {
                 "error": str(e),
                 "portfolio_value": 0,
@@ -319,15 +312,11 @@ class PositionManager:
             }
     
     async def sync_with_ibkr(
-        self,
-        strategy_id: Optional[int] = None
+        self
     ) -> Dict[str, Any]:
         """
         Synchronize positions with IBKR account.
         
-        Args:
-            strategy_id: Sync for specific strategy only
-            
         Returns:
             Dictionary with sync results
         """
@@ -348,26 +337,23 @@ class PositionManager:
                     if not conid:
                         continue
                     
-                    # Find or create position
-                    position = await self.get_position(conid, strategy_id)
+                    # Find or create position (strategy_id not in Position model)
+                    position = await self.get_position(conid)
                     
                     if position:
                         # Update existing
                         position.quantity = ibkr_pos.get('quantity', position.quantity)
-                        position.average_price = ibkr_pos.get('avg_price', position.average_price)
-                        position.last_price = ibkr_pos.get('market_price', position.last_price)
-                        position.last_updated = datetime.now()
+                        position.average_cost = ibkr_pos.get('avg_price', position.average_cost)
+                        position.current_price = ibkr_pos.get('market_price', position.current_price)
+                        # updated_at is auto-managed by SQLAlchemy
                         updated += 1
                     else:
                         # Create new (if we don't have it tracked)
                         position = Position(
                             conid=conid,
-                            strategy_id=strategy_id,
                             quantity=ibkr_pos.get('quantity', 0),
-                            average_price=ibkr_pos.get('avg_price', 0),
-                            last_price=ibkr_pos.get('market_price', 0),
-                            created_at=datetime.now(),
-                            last_updated=datetime.now()
+                            average_cost=ibkr_pos.get('avg_price', 0),
+                            current_price=ibkr_pos.get('market_price', 0)
                         )
                         self.db.add(position)
                         created += 1
@@ -417,16 +403,17 @@ class PositionManager:
         try:
             await self._update_position_pnl(position)
             
-            current_price = position.last_price or position.average_price
+            current_price = position.current_price or position.average_cost
             position_value = current_price * position.quantity
             
             # Get total portfolio value
-            portfolio = await self.calculate_portfolio_value(position.strategy_id)
+            # Note: strategy_id parameter removed as Position model doesn't have strategy_id
+            portfolio = await self.calculate_portfolio_value()
             portfolio_value = portfolio['portfolio_value']
             
             # Calculate metrics
             position_pct = (position_value / portfolio_value * 100) if portfolio_value > 0 else 0
-            pnl_pct = ((current_price - position.average_price) / position.average_price * 100) if position.average_price > 0 else 0
+            pnl_pct = ((current_price - position.average_cost) / position.average_cost * 100) if position.average_cost > 0 else 0
             
             metrics = {
                 "position_value": position_value,
@@ -434,7 +421,7 @@ class PositionManager:
                 "pnl_percent": pnl_pct,
                 "unrealized_pnl": position.unrealized_pnl or 0,
                 "realized_pnl": position.realized_pnl or 0,
-                "entry_price": position.average_price,
+                "entry_price": position.average_cost,
                 "current_price": current_price,
                 "quantity": position.quantity
             }
