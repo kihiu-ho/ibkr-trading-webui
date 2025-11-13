@@ -4,7 +4,7 @@ Store and retrieve ML/LLM artifacts (inputs/outputs, charts, signals)
 """
 from fastapi import APIRouter, HTTPException, Depends, Response
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, cast, String
 from backend.core.database import get_db
 from backend.models.artifact import Artifact
 from typing import List, Dict, Any, Optional
@@ -49,7 +49,8 @@ async def get_artifacts(
         if symbol:
             query = query.filter(Artifact.symbol == symbol)
         if execution_id:
-            query = query.filter(Artifact.execution_id == execution_id)
+            # Use explicit string casting to avoid type coercion issues
+            query = query.filter(cast(Artifact.execution_id, String) == execution_id)
         
         artifacts = query.order_by(desc(Artifact.created_at)).limit(limit).all()
         artifacts_dict = [a.to_dict() for a in artifacts]

@@ -55,7 +55,8 @@ x-airflow-common: &airflow-common
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__FERNET_KEY: 'Fernet key must be generated and kept secret - using development key'
+    AIRFLOW__WEBSERVER__SECRET_KEY: 'ibkr-trading-webui-secret-key-dev'
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
@@ -63,6 +64,9 @@ x-airflow-common: &airflow-common
     # Web server base URL configuration for log URL generation
     AIRFLOW__WEBSERVER__BASE_URL: 'http://localhost:8080'
     AIRFLOW__CORE__HOSTNAME_CALLABLE: 'socket:getfqdn'
+    # Log serving configuration
+    AIRFLOW__LOGGING__REMOTE_LOGGING: 'false'
+    AIRFLOW__LOGGING__LOGGING_LEVEL: 'INFO'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     # PostgreSQL connection for workflows
     POSTGRES_HOST: postgres
@@ -103,7 +107,7 @@ x-airflow-common: &airflow-common
     - ./reference/airflow/models:/app/models
     - ./reference/airflow/config.yaml:/app/config.yaml
     - ./.env:/app/.env
-    - charts_data:/app/charts  # Shared volume for chart files
+    - charts_data:/app/charts:rw  # Shared volume for chart files with read-write permissions
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     redis:
@@ -258,7 +262,7 @@ services:
       - ./backend:/app/backend:ro
       - ./frontend:/app/frontend:ro
       - ./logs:/app/logs
-      - charts_data:/app/charts  # Shared volume for chart files
+      - charts_data:/app/charts:rw  # Shared volume for chart files with read-write permissions
     depends_on:
       redis:
         condition: service_healthy
@@ -423,7 +427,7 @@ services:
           memory: 256M
           cpus: '0.25'
 
-  # Airflow Init - Database initialization
+  # Airflow Init - Database initialization and volume setup
   airflow-init:
     <<: *airflow-common
     container_name: ibkr-airflow-init
@@ -431,6 +435,10 @@ services:
     command:
       - -c
       - |
+        # Fix permissions on shared volumes
+        mkdir -p /app/charts
+        chmod -R 777 /app/charts
+        
         # Wait for postgres to be ready
         until pg_isready -h postgres -p 5432 -U airflow; do
           echo "Waiting for postgres..."

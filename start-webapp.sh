@@ -278,6 +278,12 @@ if [ "$NEED_BUILD" = true ]; then
     print_info "Building backend image (ibkr-backend:latest)..."
     docker build -f docker/Dockerfile.backend -t ibkr-backend:latest .
     
+    # Copy webapp directory to project root for gateway build (if it doesn't exist)
+    if [ ! -d "webapp" ]; then
+        print_info "Copying webapp directory from reference/ to project root..."
+        cp -r reference/webapp ./webapp
+    fi
+    
     # Build gateway image directly
     print_info "Building gateway image (ibkr-gateway:latest)..."
     docker build -f Dockerfile -t ibkr-gateway:latest .

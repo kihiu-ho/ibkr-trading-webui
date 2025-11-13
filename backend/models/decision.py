@@ -1,6 +1,5 @@
 """Decision model for storing trading decisions."""
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey, Index
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Float, Text, DateTime, Index
 from backend.models import Base
 from datetime import datetime, timezone
 
@@ -18,9 +17,9 @@ class Decision(Base):
     # Primary key
     id = Column(Integer, primary_key=True, index=True)
     
-    # Foreign keys
-    strategy_id = Column(Integer, ForeignKey("strategies.id"), nullable=False, index=True)
-    code_id = Column(Integer, ForeignKey("codes.id"), nullable=True)  # May be null if code not saved
+    # Foreign keys (removed ForeignKey constraints - tables don't exist)
+    strategy_id = Column(Integer, nullable=False, index=True)
+    code_id = Column(Integer, nullable=True)
     
     # Decision data
     type = Column(String(50), nullable=False)  # 'buy', 'sell', 'hold'
@@ -36,9 +35,6 @@ class Decision(Base):
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
-    
-    # Relationships
-    # strategy = relationship("Strategy", back_populates="decisions")  # Removed - strategies feature deprecated
     
     def __repr__(self):
         return f"<Decision(id={self.id}, strategy_id={self.strategy_id}, type={self.type}, current_price={self.current_price})>"

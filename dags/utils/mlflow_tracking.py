@@ -100,6 +100,24 @@ class MLflowTracker:
         except Exception as e:
             logger.error(f"Failed to log artifact {filename}: {e}")
     
+    def log_file_artifact(self, file_path: str, artifact_path: Optional[str] = None):
+        """
+        Log a file directly as an MLflow artifact
+        
+        Args:
+            file_path: Path to the file to log
+            artifact_path: Optional subdirectory within the artifact store
+        """
+        try:
+            if artifact_path:
+                mlflow.log_artifact(file_path, artifact_path)
+            else:
+                mlflow.log_artifact(file_path)
+            logger.info(f"Logged file artifact: {file_path}")
+        
+        except Exception as e:
+            logger.error(f"Failed to log file artifact {file_path}: {e}")
+    
     def log_dataframe(self, df, filename: str):
         """Log a pandas DataFrame as CSV artifact"""
         try:
@@ -111,10 +129,10 @@ class MLflowTracker:
                 df.to_csv(filepath, index=False)
                 
                 mlflow.log_artifact(filepath)
-                logger.info(f"Logged DataFrame artifact: {filename} ({len(df)} rows)")
+                logger.info(f"Logged DataFrame artifact: {filename}")
         
         except Exception as e:
-            logger.error(f"Failed to log DataFrame {filename}: {e}")
+            logger.error(f"Failed to log DataFrame: {e}")
     
     def set_tags(self, tags: Dict[str, str]):
         """Set tags on the current run"""

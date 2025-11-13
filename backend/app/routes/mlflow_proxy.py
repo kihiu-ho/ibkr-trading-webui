@@ -92,7 +92,7 @@ async def health():
     try:
         session = get_mlflow_session()
         url = f"{MLFLOW_API_URL}/experiments/search"
-        response = session.get(url, params={'max_results': 1}, timeout=5)
+        response = session.get(url, params={'max_results': 1}, timeout=15)
         return JSONResponse(content={'status': 'healthy'}, status_code=200)
     except Exception as e:
         logger.error(f"MLflow health check failed: {e}")

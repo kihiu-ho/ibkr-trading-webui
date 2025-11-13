@@ -21,6 +21,23 @@ def get_airflow_session():
     session.auth = HTTPBasicAuth(AIRFLOW_USER, AIRFLOW_PASSWORD)
     return session
 
+
+def _build_airflow_response(response: requests.Response, *, context: str = "Airflow API") -> Response:
+    """Return a FastAPI response without assuming Airflow returned JSON."""
+    try:
+        content = response.json()
+        return JSONResponse(content=content, status_code=response.status_code)
+    except ValueError as error:
+        media_type = response.headers.get('Content-Type') or 'text/plain'
+        body = response.content or b''
+        logger.warning(
+            "Airflow responded with non-JSON payload for %s (status %s): %s",
+            context,
+            response.status_code,
+            error
+        )
+        return Response(content=body, status_code=response.status_code, media_type=media_type)
+
 @router.get('/dags')
 async def list_dags(request: Request):
     """List all DAGs"""
@@ -94,7 +111,10 @@ async def dag_runs(dag_id: str, request: Request):
             return JSONResponse(content=response_data, status_code=response.status_code)
         else:
             response = session.get(url, params=dict(request.query_params))
-            return JSONResponse(content=response.json(), status_code=response.status_code)
+            return _build_airflow_response(
+                response,
+                context=f"GET /dags/{dag_id}/dagRuns?{request.query_params}"
+            )
     except Exception as e:
         logger.error(f"Failed to handle DAG runs for {dag_id}: {e}", exc_info=True)
         return JSONResponse(content={'error': str(e)}, status_code=500)
@@ -335,4 +355,3 @@ async def debug_routes():
                 'methods': list(route.methods) if route.methods else []
             })
     return JSONResponse(content={'routes': routes})
-

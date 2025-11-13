@@ -16,8 +16,8 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-# Add project root to path
-project_root = Path(__file__).parent
+# Add project root (two levels up from tests/scripts/) to sys.path
+project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 from backend.core.database import SessionLocal
@@ -221,4 +221,3 @@ async def test_complete_workflow():
 
 if __name__ == "__main__":
     asyncio.run(test_complete_workflow())
-

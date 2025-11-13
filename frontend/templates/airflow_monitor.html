@@ -101,11 +101,11 @@
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
-                    <template x-for="run in recentRuns" :key="run.dag_run_id">
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" x-text="run.dag_id"></td>
+                    <template x-for="run in recentRuns" :key="run?.dag_run_id || Math.random()">
+                        <tr class="hover:bg-gray-50" x-show="run">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" x-text="run?.dag_id || 'N/A'"></td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                <span class="font-mono text-xs" x-text="run.dag_run_id.substring(0, 30) + '...'"></span>
+                                <span class="font-mono text-xs" x-text="run?.dag_run_id ? (run.dag_run_id.substring(0, 30) + '...') : 'N/A'"></span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
@@ -115,21 +115,21 @@
                                           'bg-yellow-100 text-yellow-800': run.state === 'running',
                                           'bg-gray-100 text-gray-800': run.state === 'queued'
                                       }">
-                                    <span x-text="run.state"></span>
+                                    <span x-text="run?.state || 'unknown'"></span>
                                 </span>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(run.start_date)"></td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="calculateDuration(run.start_date, run.end_date)"></td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" :data-run-id="run.dag_run_id">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(run?.start_date)"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="calculateDuration(run?.start_date, run?.end_date)"></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" :data-run-id="run?.dag_run_id">
                                 <div class="flex space-x-2">
-                                    <button @click="viewRunDetails(run.dag_id, run.dag_run_id)" 
+                                    <button @click="viewRunDetails(run?.dag_id, run?.dag_run_id)" 
                                             class="text-blue-600 hover:text-blue-900" title="View Details">
                                         <i class="fa fa-eye"></i>
                                     </button>
                                     <button @click="triggerDAG(run.dag_id, $event)" 
                                             class="text-green-600 hover:text-green-900 disabled:text-gray-400 disabled:cursor-not-allowed" 
                                             title="Trigger DAG"
-                                            :disabled="run.state === 'running'">
+                                            :disabled="run?.state === 'running'">
                                         <i class="fa fa-play"></i>
                                     </button>
                                 </div>
@@ -167,19 +167,19 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div>
                             <p class="text-sm text-gray-500 font-medium">DAG ID</p>
-                            <p class="text-lg font-semibold text-gray-900" x-text="selectedRun.dag_id"></p>
+                            <p class="text-lg font-semibold text-gray-900" x-text="selectedRun?.dag_id || 'N/A'"></p>
                         </div>
                     <div>
                             <p class="text-sm text-gray-500 font-medium">Run ID</p>
-                            <p class="text-sm font-mono text-gray-700" x-text="selectedRun.dag_run_id"></p>
+                            <p class="text-sm font-mono text-gray-700" x-text="selectedRun?.dag_run_id || 'N/A'"></p>
                         </div>
                             <div>
                             <p class="text-sm text-gray-500 font-medium">Started</p>
-                            <p class="text-sm font-medium text-gray-900" x-text="formatDate(selectedRun.start_date)"></p>
+                            <p class="text-sm font-medium text-gray-900" x-text="formatDate(selectedRun?.start_date)"></p>
                             </div>
                             <div>
                             <p class="text-sm text-gray-500 font-medium">Duration</p>
-                            <p class="text-sm font-medium text-gray-900" x-text="calculateDuration(selectedRun.start_date, selectedRun.end_date)"></p>
+                            <p class="text-sm font-medium text-gray-900" x-text="calculateDuration(selectedRun?.start_date, selectedRun?.end_date)"></p>
                         </div>
                     </div>
                 </div>
@@ -237,7 +237,7 @@
                                             <div class="space-y-1 text-xs text-gray-600">
                                                 <div class="flex justify-between">
                                                     <span>Duration:</span>
-                                                    <span x-text="calculateDuration(task.start_date, task.end_date)"></span>
+                                                    <span x-text="calculateDuration(task?.start_date, task?.end_date)"></span>
                                                 </div>
                                                 <div class="flex justify-between" x-show="task.try_number > 1">
                                                     <span>Retries:</span>
@@ -297,8 +297,8 @@
                                             <span x-text="task.state"></span>
                                         </span>
                                         </td>
-                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(task.start_date)"></td>
-                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500" x-text="calculateDuration(task.start_date, task.end_date)"></td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(task?.start_date)"></td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500" x-text="calculateDuration(task?.start_date, task?.end_date)"></td>
                                         <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500" x-text="task.try_number ? task.try_number - 1 : 0"></td>
                                         <td class="px-4 py-3 whitespace-nowrap text-sm font-medium">
                                             <div class="flex space-x-2">
@@ -590,7 +590,7 @@
                 
                 <!-- Logs Content -->
                 <div x-show="!logsLoading && !logsError && logsContent" class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                    <pre class="text-sm text-gray-100 font-mono whitespace-pre-wrap break-words" x-text="logsContent"></pre>
+                    <pre class="text-sm text-green-400 font-mono whitespace-pre-wrap break-words select-all" x-text="logsContent"></pre>
                 </div>
                 
                 <!-- Empty State -->
@@ -605,7 +605,7 @@
                     Close
                 </button>
                 <button x-show="!logsLoading && !logsError && logsContent" 
-                        @click="navigator.clipboard.writeText(logsContent)" 
+                        @click="copyLogsToClipboard()" 
                         class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
                     <i class="fa fa-copy mr-2"></i>Copy Logs
                 </button>
@@ -714,7 +714,15 @@ function airflowMonitor() {
                         console.debug(`Could not load runs for ${dagId}:`, err);
                     }
                 }
-                this.recentRuns = runs.sort((a, b) => new Date(b.start_date) - new Date(a.start_date)).slice(0, 20);
+                // Filter out null/undefined runs and sort by start_date
+                this.recentRuns = runs
+                    .filter(run => run && run.dag_run_id)
+                    .sort((a, b) => {
+                        const dateA = a.start_date ? new Date(a.start_date) : new Date(0);
+                        const dateB = b.start_date ? new Date(b.start_date) : new Date(0);
+                        return dateB - dateA;
+                    })
+                    .slice(0, 20);
             } catch (error) {
                 console.error('Failed to load recent runs:', error);
             }
@@ -1056,6 +1064,11 @@ function airflowMonitor() {
             this.showLogsModal = true;
             
             try {
+                if (!this.selectedRun || !this.selectedRun.dag_id || !this.selectedRun.dag_run_id) {
+                    this.logsError = 'Invalid run selected';
+                    this.logsLoading = false;
+                    return;
+                }
                 const logUrl = `/api/airflow/dags/${this.selectedRun.dag_id}/dagRuns/${this.selectedRun.dag_run_id}/taskInstances/${task.task_id}/logs/1`;
                 const response = await fetch(logUrl);
                 const data = await response.json();
@@ -1090,11 +1103,33 @@ function airflowMonitor() {
             }
         },
 
+        async copyLogsToClipboard() {
+            try {
+                await navigator.clipboard.writeText(this.logsContent);
+                // Show success notification
+                const button = event.target.closest('button');
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<i class="fa fa-check mr-2"></i>Copied!';
+                button.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                button.classList.add('bg-green-600', 'hover:bg-green-700');
+                
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.classList.remove('bg-green-600', 'hover:bg-green-700');
+                    button.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                }, 2000);
+            } catch (error) {
+                console.error('Failed to copy logs:', error);
+                alert('Failed to copy logs to clipboard');
+            }
+        },
+
         viewTaskDetails(task) {
+            if (!task) return;
             // Show task details in a simple alert for now
             const details = `
-Task ID: ${task.task_id}
-State: ${task.state}
+Task ID: ${task.task_id || 'N/A'}
+State: ${task.state || 'N/A'}
 Operator: ${task.operator || 'N/A'}
 Start Date: ${this.formatDate(task.start_date)}
 End Date: ${this.formatDate(task.end_date)}

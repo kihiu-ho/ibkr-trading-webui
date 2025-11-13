@@ -5,7 +5,7 @@ Complete end-to-end trading workflow: Market Data → Charts → LLM Analysis �
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.utils.dates import days_ago
+# from airflow.utils.dates import days_ago # Deprecated in Airflow 2.x+
 import logging
 import os
 from decimal import Decimal
@@ -692,10 +692,12 @@ def log_to_mlflow_task(**context):
                 'take_profit': float(signal.suggested_take_profit) if signal.suggested_take_profit else None
             }, 'trading_signal.json')
             
-            # Log charts as artifacts
-            import shutil
-            shutil.copy(daily_chart.file_path, 'daily_chart.png')
-            shutil.copy(weekly_chart.file_path, 'weekly_chart.png')
+            # Log charts as artifacts directly from their file paths
+            try:
+                tracker.log_file_artifact(daily_chart.file_path)
+                tracker.log_file_artifact(weekly_chart.file_path)
+            except Exception as e:
+                logger.warning(f"Failed to log chart artifacts: {e}")
             
             # Log portfolio
             tracker.log_artifact_dict({
@@ -742,21 +744,24 @@ def log_to_mlflow_task(**context):
             
             logger.info(f"Successfully logged to MLflow. Run ID: {tracker.run_id}")
             
-            # Update artifacts with MLflow run_id if not already set
+            # Update artifacts with MLflow run_id if not already set (limit to 5 to prevent timeout)
             try:
                 import requests
                 backend_url = os.getenv('BACKEND_API_URL', 'http://backend:8000')
                 # Get recent artifacts for this symbol and update them
-                response = requests.get(f"{backend_url}/api/artifacts/?symbol={SYMBOL}&limit=10")
+                response = requests.get(f"{backend_url}/api/artifacts/?symbol={SYMBOL}&limit=5", timeout=3)
                 if response.status_code == 200:
                     artifacts = response.json().get('artifacts', [])
-                    for artifact in artifacts:
+                    for artifact in artifacts[:5]:  # Limit to 5 artifacts max
                         if not artifact.get('run_id'):
-                            requests.patch(
-                                f"{backend_url}/api/artifacts/{artifact['id']}",
-                                json={'run_id': tracker.run_id, 'experiment_id': str(experiment_id) if experiment_id else None},
-                                timeout=5
-                            )
+                            try:
+                                requests.patch(
+                                    f"{backend_url}/api/artifacts/{artifact['id']}",
+                                    json={'run_id': tracker.run_id},
+                                    timeout=2
+                                )
+                            except Exception as e:
+                                logger.warning(f"Failed to update artifact {artifact['id']}: {e}")
             except Exception as e:
                 logger.warning(f"Failed to update artifacts with MLflow run_id: {e}")
         
@@ -773,7 +778,7 @@ with DAG(
     default_args=default_args,
     description='IBKR Trading Signal Workflow - Market Data → Charts → LLM Analysis → Order → Portfolio',
     schedule_interval=WORKFLOW_SCHEDULE,  # Configurable via WORKFLOW_SCHEDULE env var
-    start_date=days_ago(1),
+    start_date=datetime(2023, 1, 1), # Using a fixed date as days_ago is deprecated
     catchup=False,
     tags=['ibkr', 'trading', 'llm', 'signals', 'ml', 'automated' if WORKFLOW_SCHEDULE else 'manual'],
     max_active_runs=1,

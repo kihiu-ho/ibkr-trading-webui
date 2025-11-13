@@ -44,4 +44,15 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<EO
   GRANT ALL PRIVILEGES ON DATABASE mlflow TO mlflow;
 EOSQL
 
+# Create backend (ibkr_trading) database for artifacts and market data
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<EOSQL
+  -- The backend database uses the postgres user (default)
+  -- Create ibkr_trading database if it doesn't exist
+  SELECT 'CREATE DATABASE ibkr_trading'
+  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'ibkr_trading')\gexec
+
+  -- Grant permissions to postgres user (which is the default)
+  GRANT ALL PRIVILEGES ON DATABASE ibkr_trading TO postgres;
+EOSQL
+
 echo "Database initialization completed successfully"
