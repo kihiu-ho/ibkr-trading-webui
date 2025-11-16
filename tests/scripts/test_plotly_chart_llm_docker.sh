@@ -10,13 +10,6 @@ echo "======================================================================"
 echo ""
 
 # Check if we're in the right environment
-if ! python3 -c "import stock_indicators" 2>/dev/null; then
-    echo "❌ stock_indicators not found. This test must run in Docker container."
-    echo "   Run: docker-compose exec airflow-webserver bash"
-    echo "   Then: python3 /path/to/test_plotly_chart_llm.py"
-    exit 1
-fi
-
 if ! python3 -c "import plotly" 2>/dev/null; then
     echo "❌ plotly not found. This test must run in Docker container."
     exit 1
@@ -37,4 +30,3 @@ echo ""
 echo "======================================================================"
 echo "✅ TEST COMPLETE"
 echo "======================================================================"
-

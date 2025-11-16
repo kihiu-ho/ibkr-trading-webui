@@ -208,9 +208,15 @@ curl -k https://localhost:5055/v1/api/tickle
 - Subsequent requests will use cached data
 
 **Issue**: "Kaleido/Chrome required"
-- This is a chart rendering dependency
-- Not related to the SQLAlchemy fix
-- Add to Docker image if needed: `pip install kaleido`
+- This means the Airflow image cannot import Kaleido/Chromium for Plotly exports.
+- Run `./scripts/verify_kaleido.sh --service airflow-webserver` (or `--image ibkr-airflow:latest`) to confirm the dependency.
+- If verification fails, rebuild the image and restart services:
+  ```bash
+  docker compose build airflow-webserver airflow-scheduler
+  ./scripts/verify_kaleido.sh --image ibkr-airflow:latest
+  docker compose up -d airflow-webserver airflow-scheduler
+  ```
+- When running workflows outside Docker, install Kaleido locally: `pip install kaleido==0.2.1`
 
 ### Cannot Access Login Page
 
@@ -297,4 +303,3 @@ Visit the IBKR Login page for diagnostic information:
 **http://localhost:8000/ibkr/login**
 
 Happy Trading! 📈
-

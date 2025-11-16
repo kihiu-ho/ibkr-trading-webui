@@ -1,0 +1,25 @@
+# Python dependencies for the custom Airflow image
+# Managed via uv pip install --system -r airflow/requirements-airflow.txt
+xgboost
+mlflow
+kafka-python
+catboost
+pyspark
+lightgbm
+imblearn
+scikit-learn
+tqdm
+tqdm-joblib
+confluent-kafka
+pandas
+numpy
+matplotlib
+mplfinance
+plotly>=5.24.0
+kaleido==0.2.1
+pandas-ta
+pydantic
+openai
+anthropic
+ib-insync
+minio

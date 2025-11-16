@@ -12,6 +12,7 @@ from backend.models.decision import Decision
 from backend.models.chart import Chart
 from backend.models.llm_analysis import LLMAnalysis
 from backend.models.artifact import Artifact
+from backend.models.workflow_symbol import WorkflowSymbol
 
 __all__ = [
     "Base",
@@ -29,5 +30,6 @@ __all__ = [
     "Chart",
     "LLMAnalysis",
     "Artifact",
+    "WorkflowSymbol",
 ]
 

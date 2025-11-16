@@ -122,15 +122,21 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="calculateDuration(run?.start_date, run?.end_date)"></td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" :data-run-id="run?.dag_run_id">
                                 <div class="flex space-x-2">
-                                    <button @click="viewRunDetails(run?.dag_id, run?.dag_run_id)" 
+                                    <button @click="viewRunDetails(run?.dag_id, run?.dag_run_id)"
                                             class="text-blue-600 hover:text-blue-900" title="View Details">
                                         <i class="fa fa-eye"></i>
                                     </button>
-                                    <button @click="triggerDAG(run.dag_id, $event)" 
-                                            class="text-green-600 hover:text-green-900 disabled:text-gray-400 disabled:cursor-not-allowed" 
+                                    <button @click="triggerDAG(run.dag_id, $event)"
+                                            class="text-green-600 hover:text-green-900 disabled:text-gray-400 disabled:cursor-not-allowed"
                                             title="Trigger DAG"
                                             :disabled="run?.state === 'running'">
                                         <i class="fa fa-play"></i>
+                                    </button>
+                                    <button @click="openFailModal(run)"
+                                            class="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+                                            :title="canStopRun(run) ? 'Stop & Mark Failed' : 'Only running or queued runs can be stopped'"
+                                            :disabled="!airflowHealthy || !canStopRun(run)">
+                                        <i class="fa fa-stop-circle"></i>
                                     </button>
                                 </div>
                             </td>
@@ -157,9 +163,19 @@
                         <span x-text="selectedRun ? selectedRun.state : ''"></span>
                     </span>
                 </div>
-                <button @click="showModal = false" class="text-gray-400 hover:text-gray-500">
-                    <i class="fa fa-times text-xl"></i>
-                </button>
+                <div class="flex items-center space-x-3">
+                    <button x-show="canStopRun(selectedRun)"
+                            x-cloak
+                            @click="openFailModal(selectedRun)"
+                            :disabled="!airflowHealthy"
+                            :title="airflowHealthy ? 'Stop & Mark Failed' : 'Airflow unavailable'"
+                            class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition disabled:bg-red-300 disabled:cursor-not-allowed">
+                        <i class="fa fa-stop-circle mr-1"></i>Stop &amp; Mark Failed
+                    </button>
+                    <button @click="showModal = false" class="text-gray-400 hover:text-gray-500">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
             </div>
             <div class="p-6" x-show="selectedRun">
                 <!-- Run Overview -->
@@ -611,10 +627,61 @@
                 </button>
             </div>
         </div>
+        </div>
     </div>
-</div>
 
-<script>
+    <!-- Fail Run Confirmation Modal -->
+    <div x-show="showFailModal" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50" x-cloak @click.self="closeFailModal()">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+            <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                <div>
+                    <h3 class="text-xl font-semibold text-gray-900">Stop Workflow Run</h3>
+                    <p class="text-sm text-gray-500">This marks the DAG run as failed and stops remaining tasks.</p>
+                </div>
+                <button @click="closeFailModal()" class="text-gray-400 hover:text-gray-500">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div class="text-sm text-gray-700">
+                    <p>
+                        Are you sure you want to stop
+                        <span class="font-semibold" x-text="failTarget?.dag_id || ''"></span>
+                        run
+                        <span class="font-mono" x-text="failTarget?.dag_run_id || ''"></span>?
+                    </p>
+                    <p class="text-gray-500 mt-2">This action cannot be undone.</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
+                    <textarea x-model="failReason"
+                              rows="3"
+                              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                              placeholder="Capture context for future audits"></textarea>
+                </div>
+                <div x-show="failError" class="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p class="text-sm text-red-700" x-text="failError"></p>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
+                <button @click="closeFailModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                    Cancel
+                </button>
+                <button @click="confirmFailRun()"
+                        class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:bg-red-300 disabled:cursor-not-allowed"
+                        :disabled="failLoading">
+                    <span x-show="failLoading">
+                        <i class="fa fa-spinner fa-spin mr-2"></i>Marking Failed...
+                    </span>
+                    <span x-show="!failLoading">
+                        <i class="fa fa-stop-circle mr-2"></i>Stop &amp; Mark Failed
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
 function airflowMonitor() {
     return {
         dags: [],
@@ -627,6 +694,11 @@ function airflowMonitor() {
         selectedRun: null,
         selectedRunTasks: [],
         showModal: false,
+        showFailModal: false,
+        failTarget: null,
+        failReason: '',
+        failError: null,
+        failLoading: false,
         airflowHealthy: false,
         lastUpdate: 'Never',
         taskStats: { success: 0, running: 0, failed: 0, queued: 0 },
@@ -723,11 +795,113 @@ function airflowMonitor() {
                         return dateB - dateA;
                     })
                     .slice(0, 20);
+                this.syncSelectedRun();
             } catch (error) {
                 console.error('Failed to load recent runs:', error);
             }
         },
-        
+
+        canStopRun(run) {
+            if (!run || !run.state) {
+                return false;
+            }
+            const stoppableStates = ['running', 'queued', 'scheduled', 'up_for_retry', 'up_for_reschedule'];
+            return stoppableStates.includes(run.state.toLowerCase());
+        },
+
+        openFailModal(run) {
+            if (!run || !this.canStopRun(run)) {
+                return;
+            }
+            this.failTarget = {
+                dag_id: run.dag_id,
+                dag_run_id: run.dag_run_id,
+                state: run.state,
+                start_date: run.start_date
+            };
+            this.failReason = '';
+            this.failError = null;
+            this.failLoading = false;
+            this.showFailModal = true;
+        },
+
+        closeFailModal() {
+            this.showFailModal = false;
+            this.failTarget = null;
+            this.failReason = '';
+            this.failError = null;
+            this.failLoading = false;
+        },
+
+        async confirmFailRun() {
+            if (!this.failTarget) {
+                this.failError = 'No workflow run selected.';
+                return;
+            }
+            if (!this.airflowHealthy) {
+                this.failError = 'Airflow is unavailable. Try again when the service is healthy.';
+                return;
+            }
+
+            this.failLoading = true;
+            this.failError = null;
+            try {
+                const dagId = encodeURIComponent(this.failTarget.dag_id);
+                const runId = encodeURIComponent(this.failTarget.dag_run_id);
+                const response = await fetch(`/api/airflow/dags/${dagId}/dagRuns/${runId}/fail`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: this.failReason })
+                });
+                let data = {};
+                try {
+                    data = await response.json();
+                } catch (jsonError) {
+                    console.debug('Failed to parse fail response JSON:', jsonError);
+                }
+
+                if (!response.ok) {
+                    this.failError = data?.message || 'Failed to mark workflow as failed.';
+                    if (data?.current_state) {
+                        this.failError += ` Current state: ${data.current_state}.`;
+                    }
+                    return;
+                }
+
+                alert(data?.message || 'Workflow run marked as failed.');
+                this.updateRunStateLocally(this.failTarget.dag_run_id, 'failed');
+                this.closeFailModal();
+                await this.refreshData();
+            } catch (error) {
+                console.error('Failed to mark DAG run as failed:', error);
+                this.failError = 'Failed to reach backend. Check connectivity and try again.';
+            } finally {
+                this.failLoading = false;
+            }
+        },
+
+        updateRunStateLocally(runId, newState) {
+            if (!runId) return;
+            this.recentRuns = this.recentRuns.map(run => {
+                if (run.dag_run_id === runId) {
+                    return { ...run, state: newState, end_date: run.end_date || new Date().toISOString() };
+                }
+                return run;
+            });
+
+            if (this.selectedRun && this.selectedRun.dag_run_id === runId) {
+                this.selectedRun = { ...this.selectedRun, state: newState };
+            }
+        },
+
+        syncSelectedRun() {
+            if (!this.selectedRun) return;
+            const updatedRun = this.recentRuns.find(run => run.dag_run_id === this.selectedRun.dag_run_id);
+            if (updatedRun) {
+                this.selectedRun = { ...this.selectedRun, ...updatedRun };
+            }
+        },
+
         async triggerDAG(dagId, event = null) {
             // Check for active runs and max_active_runs limit
             const dag = this.dags.find(d => d.dag_id === dagId);
@@ -867,7 +1041,10 @@ function airflowMonitor() {
                 // Load task instances
                 const response = await fetch(`/api/airflow/dags/${dagId}/dagRuns/${runId}/taskInstances`);
                 const data = await response.json();
-                this.selectedRun = this.recentRuns.find(r => r.dag_run_id === runId);
+                this.selectedRun = this.recentRuns.find(r => r.dag_run_id === runId) || this.selectedRun;
+                if (!this.selectedRun) {
+                    this.selectedRun = { dag_id: dagId, dag_run_id: runId, state: 'unknown' };
+                }
                 this.selectedRunTasks = data.task_instances || [];
 
                 // Calculate task statistics
@@ -1166,4 +1343,3 @@ Try Number: ${task.try_number || 1}
 }
 </script>
 {% endblock %}
-

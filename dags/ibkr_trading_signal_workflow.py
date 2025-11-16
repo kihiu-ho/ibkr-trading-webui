@@ -22,7 +22,7 @@ from models.portfolio import Portfolio, Position
 # Import utilities
 from utils.config import config
 from utils.ibkr_client import IBKRClient
-from utils.chart_generator import ChartGenerator
+from utils.chart_generator import ChartGenerator, ensure_kaleido_available, KaleidoMissingError
 from utils.llm_signal_analyzer import LLMSignalAnalyzer
 from utils.mlflow_tracking import mlflow_run_context
 from utils.artifact_storage import (
@@ -31,7 +31,8 @@ from utils.artifact_storage import (
     store_signal_artifact,
     store_order_artifact,
     store_trade_artifact,
-    store_portfolio_artifact
+    store_portfolio_artifact,
+    attach_artifact_lineage
 )
 from utils.minio_upload import upload_chart_to_minio
 
@@ -117,6 +118,21 @@ def generate_daily_chart_task(**context):
             raise ValueError("No market data found in XCom. Run fetch_market_data task first.")
         market_data = MarketData.model_validate_json(market_data_json)
         
+        # Ensure Kaleido dependency is ready before generating charts
+        kaleido_status = 'unknown'
+        try:
+            ensure_kaleido_available()
+            kaleido_status = 'ready'
+        except KaleidoMissingError as exc:
+            kaleido_status = 'missing'
+            logger.error("Kaleido is unavailable: %s", exc)
+            if task_instance:
+                task_instance.xcom_push(key='kaleido_ready', value=kaleido_status)
+            raise
+
+        if task_instance:
+            task_instance.xcom_push(key='kaleido_ready', value=kaleido_status)
+
         # Calculate indicators first
         # Use shared volume for charts (accessible by both Airflow and backend)
         charts_dir = os.getenv('CHARTS_DIR', '/app/charts')
@@ -154,11 +170,51 @@ def generate_daily_chart_task(**context):
         except Exception as e:
             logger.warning(f"Failed to upload daily chart to MinIO: {e}")
         
-        # Store chart artifact in database
+        # Store chart artifact in database with market data snapshot
+        chart_artifact = None
         try:
             # Use MinIO URL if available, otherwise use local path
             image_path = minio_url if minio_url else chart_result.file_path
-            store_chart_artifact(
+            
+            # Build market data snapshot
+            market_data_snapshot = {
+                'symbol': SYMBOL,
+                'timeframe': 'daily',
+                'fetched_at': market_data.fetched_at.isoformat() if market_data.fetched_at else None,
+                'latest_price': float(market_data.latest_price),
+                'bar_count': market_data.bar_count,
+                'bars': [
+                    {
+                        'date': bar.timestamp.isoformat(),
+                        'open': float(bar.open),
+                        'high': float(bar.high),
+                        'low': float(bar.low),
+                        'close': float(bar.close),
+                        'volume': int(bar.volume)
+                    }
+                    for bar in market_data.bars[-50:]  # Last 50 bars
+                ]
+            }
+            
+            # Add indicator summary
+            indicator_summary = {}
+            if indicators:
+                if indicators.sma_20 and indicators.sma_20[-1]:
+                    indicator_summary['sma_20'] = float(indicators.sma_20[-1])
+                if indicators.sma_50 and indicators.sma_50[-1]:
+                    indicator_summary['sma_50'] = float(indicators.sma_50[-1])
+                if indicators.sma_200 and indicators.sma_200[-1]:
+                    indicator_summary['sma_200'] = float(indicators.sma_200[-1])
+                if indicators.rsi_14 and indicators.rsi_14[-1]:
+                    indicator_summary['rsi_14'] = float(indicators.rsi_14[-1])
+                if indicators.macd_line and indicators.macd_line[-1]:
+                    indicator_summary['macd'] = float(indicators.macd_line[-1])
+                if indicators.bb_upper and indicators.bb_upper[-1]:
+                    indicator_summary['bb_upper'] = float(indicators.bb_upper[-1])
+                if indicators.bb_lower and indicators.bb_lower[-1]:
+                    indicator_summary['bb_lower'] = float(indicators.bb_lower[-1])
+            
+            chart_artifact = store_chart_artifact(
                 name=f"{SYMBOL} Daily Chart",
                 symbol=SYMBOL,
                 image_path=image_path,
@@ -174,8 +230,16 @@ def generate_daily_chart_task(**context):
                     'bars_count': market_data.bar_count,
                     'minio_url': minio_url,
                     'local_path': chart_result.file_path
+                },
+                metadata={
+                    'market_data_snapshot': market_data_snapshot,
+                    'indicator_summary': indicator_summary
                 }
             )
+            
+            # Store artifact ID for later enrichment
+            if chart_artifact:
+                task_instance.xcom_push(key='daily_chart_artifact_id', value=chart_artifact['id'])
         except Exception as e:
             logger.warning(f"Failed to store chart artifact: {e}")
         
@@ -219,6 +283,21 @@ def generate_weekly_chart_task(**context):
             raise ValueError("No market data found in XCom. Run fetch_market_data task first.")
         market_data = MarketData.model_validate_json(market_data_json)
         
+        # Confirm Kaleido is ready for weekly export
+        kaleido_status = 'unknown'
+        try:
+            ensure_kaleido_available()
+            kaleido_status = 'ready'
+        except KaleidoMissingError as exc:
+            kaleido_status = 'missing'
+            logger.error("Kaleido is unavailable for weekly chart: %s", exc)
+            if task_instance:
+                task_instance.xcom_push(key='kaleido_ready_weekly', value=kaleido_status)
+            raise
+
+        if task_instance:
+            task_instance.xcom_push(key='kaleido_ready_weekly', value=kaleido_status)
+
         # Resample to weekly
         # Use shared volume for charts (accessible by both Airflow and backend)
         charts_dir = os.getenv('CHARTS_DIR', '/app/charts')
@@ -258,11 +337,45 @@ def generate_weekly_chart_task(**context):
         except Exception as e:
             logger.warning(f"Failed to upload weekly chart to MinIO: {e}")
         
-        # Store chart artifact in database
+        # Store chart artifact in database with market data snapshot
+        chart_artifact = None
         try:
             # Use MinIO URL if available, otherwise use local path
             image_path = minio_url if minio_url else chart_result.file_path
-            store_chart_artifact(
+            
+            # Build market data snapshot for weekly
+            market_data_snapshot = {
+                'symbol': SYMBOL,
+                'timeframe': 'weekly',
+                'fetched_at': weekly_data.fetched_at.isoformat() if weekly_data.fetched_at else None,
+                'latest_price': float(weekly_data.latest_price),
+                'bar_count': weekly_data.bar_count,
+                'bars': [
+                    {
+                        'date': bar.timestamp.isoformat(),
+                        'open': float(bar.open),
+                        'high': float(bar.high),
+                        'low': float(bar.low),
+                        'close': float(bar.close),
+                        'volume': int(bar.volume)
+                    }
+                    for bar in weekly_data.bars[-20:]  # Last 20 weeks
+                ]
+            }
+            
+            # Add indicator summary
+            indicator_summary = {}
+            if weekly_indicators:
+                if weekly_indicators.sma_20 and weekly_indicators.sma_20[-1]:
+                    indicator_summary['sma_20'] = float(weekly_indicators.sma_20[-1])
+                if weekly_indicators.sma_50 and weekly_indicators.sma_50[-1]:
+                    indicator_summary['sma_50'] = float(weekly_indicators.sma_50[-1])
+                if weekly_indicators.rsi_14 and weekly_indicators.rsi_14[-1]:
+                    indicator_summary['rsi_14'] = float(weekly_indicators.rsi_14[-1])
+                if weekly_indicators.macd_line and weekly_indicators.macd_line[-1]:
+                    indicator_summary['macd'] = float(weekly_indicators.macd_line[-1])
+            
+            chart_artifact = store_chart_artifact(
                 name=f"{SYMBOL} Weekly Chart",
                 symbol=SYMBOL,
                 image_path=image_path,
@@ -278,8 +391,16 @@ def generate_weekly_chart_task(**context):
                     'bars_count': weekly_data.bar_count,
                     'minio_url': minio_url,
                     'local_path': chart_result.file_path
+                },
+                metadata={
+                    'market_data_snapshot': market_data_snapshot,
+                    'indicator_summary': indicator_summary
                 }
             )
+            
+            # Store artifact ID for later enrichment
+            if chart_artifact:
+                task_instance.xcom_push(key='weekly_chart_artifact_id', value=chart_artifact['id'])
         except Exception as e:
             logger.warning(f"Failed to store chart artifact: {e}")
         
@@ -343,7 +464,7 @@ def analyze_with_llm_task(**context):
         # Store LLM artifact (prompt + response)
         try:
             prompt_text = f"Analyze {SYMBOL} daily and weekly charts with technical indicators (SMA, RSI, MACD, Bollinger Bands) and provide trading recommendation."
-            store_llm_artifact(
+            llm_artifact = store_llm_artifact(
                 name=f"{SYMBOL} LLM Analysis",
                 symbol=SYMBOL,
                 prompt=prompt_text,
@@ -355,12 +476,69 @@ def analyze_with_llm_task(**context):
                 dag_id=context['dag'].dag_id,
                 task_id=context['task'].task_id
             )
+            if llm_artifact:
+                task_instance.xcom_push(key='llm_artifact_id', value=llm_artifact['id'])
         except Exception as e:
             logger.warning(f"Failed to store LLM artifact: {e}")
         
+        # Update chart artifacts with LLM analysis context
+        try:
+            from utils.artifact_storage import update_artifact
+            
+            # Retrieve chart artifact IDs
+            daily_artifact_id = task_instance.xcom_pull(task_ids='generate_daily_chart', key='daily_chart_artifact_id')
+            weekly_artifact_id = task_instance.xcom_pull(task_ids='generate_weekly_chart', key='weekly_chart_artifact_id')
+            
+            # Build LLM analysis summary for metadata
+            llm_analysis = {
+                'action': str(signal.action),
+                'confidence': str(signal.confidence),
+                'confidence_score': float(signal.confidence_score) if signal.confidence_score else None,
+                'reasoning_snippet': signal.reasoning[:200] + '...' if len(signal.reasoning) > 200 else signal.reasoning,
+                'key_factors': signal.key_factors[:3] if signal.key_factors else [],
+                'entry_price': float(signal.suggested_entry_price) if signal.suggested_entry_price else None,
+                'stop_loss': float(signal.suggested_stop_loss) if signal.suggested_stop_loss else None,
+                'take_profit': float(signal.suggested_take_profit) if signal.suggested_take_profit else None,
+                'is_actionable': signal.is_actionable
+            }
+            
+            # Update daily chart artifact
+            if daily_artifact_id:
+                update_artifact(
+                    artifact_id=daily_artifact_id,
+                    updates={
+                        'prompt': prompt_text,
+                        'response': signal.reasoning,
+                        'model_name': signal.model_used or LLM_MODEL or "unknown",
+                        'prompt_length': len(prompt_text),
+                        'response_length': len(signal.reasoning),
+                        'metadata': {
+                            'llm_analysis': llm_analysis
+                        }
+                    }
+                )
+            
+            # Update weekly chart artifact
+            if weekly_artifact_id:
+                update_artifact(
+                    artifact_id=weekly_artifact_id,
+                    updates={
+                        'prompt': prompt_text,
+                        'response': signal.reasoning,
+                        'model_name': signal.model_used or LLM_MODEL or "unknown",
+                        'prompt_length': len(prompt_text),
+                        'response_length': len(signal.reasoning),
+                        'metadata': {
+                            'llm_analysis': llm_analysis
+                        }
+                    }
+                )
+        except Exception as e:
+            logger.warning(f"Failed to update chart artifacts with LLM context: {e}")
+        
         # Store signal artifact
         try:
-            store_signal_artifact(
+            signal_artifact = store_signal_artifact(
                 name=f"{SYMBOL} {signal.action} Signal",
                 symbol=SYMBOL,
                 action=str(signal.action),
@@ -382,6 +560,8 @@ def analyze_with_llm_task(**context):
                     'is_actionable': signal.is_actionable
                 }
             )
+            if signal_artifact:
+                task_instance.xcom_push(key='signal_artifact_id', value=signal_artifact['id'])
         except Exception as e:
             logger.warning(f"Failed to store signal artifact: {e}")
         
@@ -627,6 +807,10 @@ def log_to_mlflow_task(**context):
         weekly_chart_json = task_instance.xcom_pull(task_ids='generate_weekly_chart', key='weekly_chart')
         portfolio_json = task_instance.xcom_pull(task_ids='get_portfolio', key='portfolio')
         order_placed = task_instance.xcom_pull(task_ids='place_order', key='order_placed')
+        daily_chart_artifact_id = task_instance.xcom_pull(task_ids='generate_daily_chart', key='daily_chart_artifact_id')
+        weekly_chart_artifact_id = task_instance.xcom_pull(task_ids='generate_weekly_chart', key='weekly_chart_artifact_id')
+        llm_artifact_id = task_instance.xcom_pull(task_ids='analyze_with_llm', key='llm_artifact_id')
+        signal_artifact_id = task_instance.xcom_pull(task_ids='analyze_with_llm', key='signal_artifact_id')
         
         market_data = MarketData.model_validate_json(market_data_json)
         signal = TradingSignal.model_validate_json(signal_json)
@@ -643,7 +827,9 @@ def log_to_mlflow_task(**context):
             'airflow_run_id': dag_run.run_id,
             'signal_action': signal.action,
             'signal_confidence': signal.confidence,
-            'order_placed': str(order_placed)
+            'order_placed': str(order_placed),
+            'workflow_id': 'ibkr_trading_signal_workflow',
+            'execution_id': str(execution_date)
         }
         
         with mlflow_run_context(run_name=run_name, tags=tags) as tracker:
@@ -692,10 +878,14 @@ def log_to_mlflow_task(**context):
                 'take_profit': float(signal.suggested_take_profit) if signal.suggested_take_profit else None
             }, 'trading_signal.json')
             
-            # Log charts as artifacts directly from their file paths
+            # Log charts as artifacts - Skip file logging to prevent hangs
+            # Charts are already stored in MinIO and accessible via artifacts API
             try:
-                tracker.log_file_artifact(daily_chart.file_path)
-                tracker.log_file_artifact(weekly_chart.file_path)
+                logger.info(f"Charts stored in MinIO - skipping MLflow file upload to prevent timeout")
+                logger.info(f"Daily chart: {daily_chart.file_path}")
+                logger.info(f"Weekly chart: {weekly_chart.file_path}")
+                # tracker.log_file_artifact(daily_chart.file_path)  # Disabled - causes timeout
+                # tracker.log_file_artifact(weekly_chart.file_path)  # Disabled - causes timeout
             except Exception as e:
                 logger.warning(f"Failed to log chart artifacts: {e}")
             
@@ -743,29 +933,20 @@ def log_to_mlflow_task(**context):
                 tracker.log_debug_info(debug_info)
             
             logger.info(f"Successfully logged to MLflow. Run ID: {tracker.run_id}")
-            
-            # Update artifacts with MLflow run_id if not already set (limit to 5 to prevent timeout)
-            try:
-                import requests
-                backend_url = os.getenv('BACKEND_API_URL', 'http://backend:8000')
-                # Get recent artifacts for this symbol and update them
-                response = requests.get(f"{backend_url}/api/artifacts/?symbol={SYMBOL}&limit=5", timeout=3)
-                if response.status_code == 200:
-                    artifacts = response.json().get('artifacts', [])
-                    for artifact in artifacts[:5]:  # Limit to 5 artifacts max
-                        if not artifact.get('run_id'):
-                            try:
-                                requests.patch(
-                                    f"{backend_url}/api/artifacts/{artifact['id']}",
-                                    json={'run_id': tracker.run_id},
-                                    timeout=2
-                                )
-                            except Exception as e:
-                                logger.warning(f"Failed to update artifact {artifact['id']}: {e}")
-            except Exception as e:
-                logger.warning(f"Failed to update artifacts with MLflow run_id: {e}")
         
-        return {'mlflow_run_id': tracker.run_id}
+        attach_artifact_lineage(
+            [
+                daily_chart_artifact_id,
+                weekly_chart_artifact_id,
+                llm_artifact_id,
+                signal_artifact_id
+            ],
+            tracker.run_id,
+            getattr(tracker, 'experiment_id', None)
+        )
+        
+        # Return run_id for potential downstream tasks to update artifacts
+        return {'mlflow_run_id': tracker.run_id, 'symbol': SYMBOL}
     
     except Exception as e:
         logger.error(f"MLflow logging failed: {e}", exc_info=True)
@@ -777,7 +958,7 @@ with DAG(
     'ibkr_trading_signal_workflow',
     default_args=default_args,
     description='IBKR Trading Signal Workflow - Market Data → Charts → LLM Analysis → Order → Portfolio',
-    schedule_interval=WORKFLOW_SCHEDULE,  # Configurable via WORKFLOW_SCHEDULE env var
+    schedule=WORKFLOW_SCHEDULE,  # Configurable via WORKFLOW_SCHEDULE env var
     start_date=datetime(2023, 1, 1), # Using a fixed date as days_ago is deprecated
     catchup=False,
     tags=['ibkr', 'trading', 'llm', 'signals', 'ml', 'automated' if WORKFLOW_SCHEDULE else 'manual'],
@@ -788,7 +969,6 @@ with DAG(
     fetch_market_data = PythonOperator(
         task_id='fetch_market_data',
         python_callable=fetch_market_data_task,
-        provide_context=True,
         execution_timeout=timedelta(minutes=5),  # Fail after 5 minutes
         doc_md="""
         ### Fetch Market Data
@@ -804,7 +984,6 @@ with DAG(
     generate_daily_chart = PythonOperator(
         task_id='generate_daily_chart',
         python_callable=generate_daily_chart_task,
-        provide_context=True,
         execution_timeout=timedelta(minutes=15),  # Fail after 15 minutes
         doc_md="""
         ### Generate Daily Chart
@@ -822,7 +1001,6 @@ with DAG(
     generate_weekly_chart = PythonOperator(
         task_id='generate_weekly_chart',
         python_callable=generate_weekly_chart_task,
-        provide_context=True,
         execution_timeout=timedelta(minutes=15),  # Fail after 15 minutes
         doc_md="""
         ### Generate Weekly Chart
@@ -837,7 +1015,6 @@ with DAG(
     analyze_with_llm = PythonOperator(
         task_id='analyze_with_llm',
         python_callable=analyze_with_llm_task,
-        provide_context=True,
         execution_timeout=timedelta(minutes=20),  # LLM can take time
         doc_md="""
         ### LLM Analysis
@@ -854,7 +1031,6 @@ with DAG(
     place_order = PythonOperator(
         task_id='place_order',
         python_callable=place_order_task,
-        provide_context=True,
         execution_timeout=timedelta(minutes=5),
         doc_md="""
         ### Place Order
@@ -870,7 +1046,6 @@ with DAG(
     get_trades = PythonOperator(
         task_id='get_trades',
         python_callable=get_trades_task,
-        provide_context=True,
         execution_timeout=timedelta(minutes=5),
         doc_md="""
         ### Get Trades
@@ -885,7 +1060,6 @@ with DAG(
     get_portfolio = PythonOperator(
         task_id='get_portfolio',
         python_callable=get_portfolio_task,
-        provide_context=True,
         execution_timeout=timedelta(minutes=5),
         doc_md="""
         ### Get Portfolio
@@ -902,8 +1076,9 @@ with DAG(
     log_to_mlflow = PythonOperator(
         task_id='log_to_mlflow',
         python_callable=log_to_mlflow_task,
-        provide_context=True,
-        execution_timeout=timedelta(minutes=5),
+        execution_timeout=timedelta(minutes=10),
+        retries=2,
+        retry_delay=timedelta(seconds=30),
         doc_md="""
         ### Log to MLflow
         Tracks entire workflow in MLflow:
@@ -922,4 +1097,3 @@ with DAG(
     place_order >> get_trades
     get_trades >> get_portfolio
     get_portfolio >> log_to_mlflow
-

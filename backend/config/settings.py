@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     LLM_CONSOLIDATE_TIMEFRAMES: bool = True
     LLM_RETRY_ATTEMPTS: int = 3
     LLM_RETRY_DELAY: int = 2  # seconds
+
+    # MLflow
+    MLFLOW_TRACKING_URI: str = "http://mlflow-server:5500"
+    MLFLOW_API_PREFIX: str = "/api/2.0/mlflow"
+    MLFLOW_EXPERIMENT_NAME: str = "ibkr-stock-data"
+    MLFLOW_REQUEST_TIMEOUT: int = 10
     
     # Risk Management
     MIN_R_COEFFICIENT: float = 1.0
@@ -131,4 +137,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

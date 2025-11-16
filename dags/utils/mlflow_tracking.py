@@ -21,6 +21,7 @@ class MLflowTracker:
         self.experiment_name = experiment_name or config.mlflow_experiment_name
         self.client = MlflowClient(tracking_uri=config.mlflow_tracking_uri)
         self.run_id: Optional[str] = None
+        self.experiment_id: Optional[str] = None
         self._setup_experiment()
     
     def _setup_experiment(self):
@@ -49,7 +50,9 @@ class MLflowTracker:
                 default_tags.update(tags)
             
             mlflow.start_run(run_name=run_name, tags=default_tags)
-            self.run_id = mlflow.active_run().info.run_id
+            active_run = mlflow.active_run()
+            self.run_id = active_run.info.run_id
+            self.experiment_id = active_run.info.experiment_id
             
             logger.info(f"Started MLflow run: {run_name} (ID: {self.run_id})")
             
@@ -102,19 +105,45 @@ class MLflowTracker:
     
     def log_file_artifact(self, file_path: str, artifact_path: Optional[str] = None):
         """
-        Log a file directly as an MLflow artifact
+        Log a file directly as an MLflow artifact with timeout protection
         
         Args:
             file_path: Path to the file to log
             artifact_path: Optional subdirectory within the artifact store
         """
         try:
-            if artifact_path:
-                mlflow.log_artifact(file_path, artifact_path)
-            else:
-                mlflow.log_artifact(file_path)
-            logger.info(f"Logged file artifact: {file_path}")
+            import os
+            
+            # Check if file exists
+            if not os.path.exists(file_path):
+                logger.warning(f"File not found, skipping: {file_path}")
+                return
+            
+            # Check if file is readable
+            if not os.access(file_path, os.R_OK):
+                logger.warning(f"File not readable, skipping: {file_path}")
+                return
+            
+            # Add timeout protection (30 seconds)
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError(f"File upload timed out after 30s: {file_path}")
+            
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(30)
+            
+            try:
+                if artifact_path:
+                    mlflow.log_artifact(file_path, artifact_path)
+                else:
+                    mlflow.log_artifact(file_path)
+                logger.info(f"Logged file artifact: {file_path}")
+            finally:
+                signal.alarm(0)  # Cancel alarm
         
+        except TimeoutError as e:
+            logger.error(f"Timeout: {e}")
         except Exception as e:
             logger.error(f"Failed to log file artifact {file_path}: {e}")
     
@@ -182,4 +211,3 @@ class mlflow_run_context:
         else:
             self.tracker.end_run(status="FINISHED")
             return True
-

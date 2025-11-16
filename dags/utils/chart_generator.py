@@ -7,9 +7,12 @@ from typing import Optional
 import os
 import tempfile
 from decimal import Decimal
+import importlib.util
+import subprocess
+import sys
+import threading
 
 import pandas as pd
-from stock_indicators import indicators as stock_indicators_lib, Quote  # type: ignore
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.io as pio
@@ -17,53 +20,68 @@ import plotly.io as pio
 from models.market_data import MarketData
 from models.indicators import TechnicalIndicators
 from models.chart import ChartConfig, ChartResult, Timeframe
+from shared.indicator_engine import build_chart_payload, compute_indicator_series
 
 logger = logging.getLogger(__name__)
 
 
-def calculate_obv(df):
-    """Calculate On-Balance Volume"""
-    obv = [0]
-    for i in range(1, len(df)):
-        if df['Close'].iloc[i] > df['Close'].iloc[i - 1]:
-            obv.append(obv[-1] + df['Volume'].iloc[i])
-        elif df['Close'].iloc[i] < df['Close'].iloc[i - 1]:
-            obv.append(obv[-1] - df['Volume'].iloc[i])
-        else:
-            obv.append(obv[-1])
-    return obv
+class KaleidoMissingError(RuntimeError):
+    """Raised when Kaleido cannot be imported despite auto-install attempts."""
 
 
-def normalize_value(value):
-    """Normalize value to B (billions) or M (millions)"""
-    if abs(value) >= 1_000_000_000:
-        return value / 1_000_000_000, "B"
-    elif abs(value) >= 1_000_000:
-        return value / 1_000_000, "M"
-    return value, ""
+_KALEIDO_CHECK_LOCK = threading.Lock()
+_KALEIDO_READY: Optional[bool] = None
 
 
-def process_indicators(indicators_dict, df):
-    """Process indicators from stock_indicators library into format for plotting"""
-    _, obv_unit = normalize_value(indicators_dict['obv'][-1] if indicators_dict['obv'] else 0)
-    return {
-        'sma_20': [float(s.sma) if s.sma else None for s in indicators_dict['sma_20']],
-        'sma_50': [float(s.sma) if s.sma else None for s in indicators_dict['sma_50']],
-        'sma_200': [float(s.sma) if s.sma else None for s in indicators_dict['sma_200']],
-        'bb_upper': [float(b.upper_band) if b.upper_band else None for b in indicators_dict['bb']],
-        'bb_lower': [float(b.lower_band) if b.lower_band else None for b in indicators_dict['bb']],
-        'bb_median': [float(b.sma) if b.sma else None for b in indicators_dict['bb']],
-        'st_values': [float(s.super_trend) if s.super_trend else None for s in indicators_dict['supertrend']],
-        'st_direction': [1 if s.upper_band else -1 if s.lower_band else 0 for s in indicators_dict['supertrend']],
-        'macd_line': [float(m.macd) if m.macd else None for m in indicators_dict['macd']],
-        'signal_line': [float(m.signal) if m.signal else None for m in indicators_dict['macd']],
-        'histogram': [float(m.histogram) if m.histogram else None for m in indicators_dict['macd']],
-        'rsi': [float(r.rsi) if r.rsi else None for r in indicators_dict['rsi']],
-        'atr': [float(a.atr) if a.atr else None for a in indicators_dict['atr']],
-        'obv_normalized': [x / (1_000_000_000 if obv_unit == "B" else 1_000_000) for x in indicators_dict['obv']],
-        'obv_unit': obv_unit,
-        'volume': df['Volume'] / 1_000_000
-    }
+def _is_kaleido_importable() -> bool:
+    return importlib.util.find_spec('kaleido') is not None
+
+
+def ensure_kaleido_available(auto_install: bool = True, install_timeout: int = 120) -> bool:
+    """Ensure Kaleido is available for Plotly image export."""
+    global _KALEIDO_READY
+
+    with _KALEIDO_CHECK_LOCK:
+        if _KALEIDO_READY:
+            return True
+
+    if _is_kaleido_importable():
+        with _KALEIDO_CHECK_LOCK:
+            _KALEIDO_READY = True
+        return True
+
+    if not auto_install:
+        raise KaleidoMissingError(
+            "Kaleido is not installed. Rebuild the Airflow image or run 'pip install kaleido==0.2.1'."
+        )
+
+    logger.warning("Kaleido not found. Attempting on-the-fly installation (kaleido>=0.2.1)...")
+    try:
+        result = subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', '--no-cache-dir', 'kaleido>=0.2.1'],
+            capture_output=True,
+            text=True,
+            timeout=install_timeout,
+            check=True,
+        )
+        if result.stdout:
+            logger.info(result.stdout.strip())
+        if result.stderr:
+            logger.debug(result.stderr.strip())
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        raise KaleidoMissingError(
+            "Unable to auto-install Kaleido. Rebuild the ibkr-airflow image or run the verify_kaleido script."
+        ) from exc
+
+    if not _is_kaleido_importable():
+        raise KaleidoMissingError(
+            "Kaleido installation completed but import still fails. Ensure kaleido==0.2.1 is available."
+        )
+
+    with _KALEIDO_CHECK_LOCK:
+        _KALEIDO_READY = True
+    logger.info("Kaleido successfully installed and ready.")
+    return True
 
 
 def create_plotly_figure(df, processed_indicators, symbol, height=1400):
@@ -263,29 +281,33 @@ class ChartGenerator:
         """
         self.output_dir = output_dir or tempfile.gettempdir()
         os.makedirs(self.output_dir, exist_ok=True)
-        
+
+        # Ensure Kaleido is available before initializing Plotly export scope
+        ensure_kaleido_available()
         # Initialize Kaleido with Chromium path if available
         self._init_kaleido()
     
     def _init_kaleido(self):
-        """Initialize Kaleido for chart image export with Chromium support"""
+        """Initialize Kaleido using the defaults API to avoid deprecation warnings."""
         try:
-            # Set plotly renderer for server-side export
-            pio.kaleido.scope.mathjax = None
-            
-            # Try to set chromium path if available
+            scope = getattr(pio.defaults, 'kaleido_scope', None)
+            if scope is None:
+                scope = getattr(pio, 'kaleido').scope  # Backward compatibility
+            scope.mathjax = None
+            chromium_args = list(getattr(scope, 'chromium_args', ()))
+            for arg in ("--single-process", "--disable-gpu"):
+                if arg not in chromium_args:
+                    chromium_args.append(arg)
+            scope.chromium_args = tuple(chromium_args)
             chromium_path = os.environ.get('CHROMIUM_PATH') or os.environ.get('CHROME_BIN')
             if chromium_path and os.path.exists(chromium_path):
-                # Configure Kaleido to use Chromium
-                pio.kaleido.scope.chromium_args += ("--single-process",)
-                logger.info(f"Kaleido initialized with Chromium: {chromium_path}")
+                logger.info(f"Kaleido defaults initialized with Chromium: {chromium_path}")
             else:
-                logger.warning(
-                    "Chromium not found in CHROMIUM_PATH or CHROME_BIN. "
-                    "Chart image export may fail. HTML fallback will be used if image export fails."
-                )
+                logger.debug("Kaleido defaults initialized without explicit Chromium path")
         except Exception as e:
-            logger.warning(f"Kaleido initialization warning: {e}. HTML fallback will be used if image export fails.")
+            logger.warning(
+                f"Kaleido initialization warning: {e}. HTML fallback will be used if image export fails."
+            )
     
     def _save_html_fallback(self, fig, original_file_path: str, config: ChartConfig) -> str:
         """
@@ -314,7 +336,7 @@ class ChartGenerator:
     
     def calculate_indicators(self, market_data: MarketData) -> TechnicalIndicators:
         """
-        Calculate technical indicators from market data using stock_indicators library
+        Calculate technical indicators from market data using pandas-based logic
         
         Args:
             market_data: Market data with OHLCV bars
@@ -322,52 +344,41 @@ class ChartGenerator:
         Returns:
             TechnicalIndicators with calculated values
         """
-        # Convert to Quote objects for stock_indicators
-        quotes = [
-            Quote(
-                date=bar.timestamp,
-                open=bar.open,
-                high=bar.high,
-                low=bar.low,
-                close=bar.close,
-                volume=Decimal(str(bar.volume))
-            )
-            for bar in market_data.bars
-        ]
-        
-        # Calculate indicators using stock_indicators library
-        sma_20 = stock_indicators_lib.get_sma(quotes, 20)
-        sma_50 = stock_indicators_lib.get_sma(quotes, 50)
-        sma_200 = stock_indicators_lib.get_sma(quotes, 200)
-        bb = stock_indicators_lib.get_bollinger_bands(quotes, 20, 2)
-        stock_indicators_lib.get_super_trend(quotes, 10, 3)  # Calculated but not stored (used in generate_chart)
-        macd = stock_indicators_lib.get_macd(quotes, 12, 26, 9)
-        rsi = stock_indicators_lib.get_rsi(quotes, 14)
-        stock_indicators_lib.get_atr(quotes, 14)  # Calculated but not stored (used in generate_chart)
-        
-        # Convert to DataFrame for OBV calculation
         df = pd.DataFrame([
             {
+                'Date': bar.timestamp,
+                'Open': float(bar.open),
+                'High': float(bar.high),
+                'Low': float(bar.low),
                 'Close': float(bar.close),
                 'Volume': int(bar.volume)
             }
             for bar in market_data.bars
         ])
-        calculate_obv(df)  # Calculated but not stored (used in generate_chart)
-        
-        # Convert to TechnicalIndicators model
+
+        indicator_series = compute_indicator_series(df)
+
+        def _to_decimal_list(series: pd.Series):
+            values = []
+            for value in series:
+                if pd.isna(value):
+                    values.append(None)
+                else:
+                    values.append(Decimal(str(float(value))))
+            return values
+
         indicators_obj = TechnicalIndicators()
-        indicators_obj.sma_20 = [Decimal(str(s.sma)) if s.sma else None for s in sma_20]
-        indicators_obj.sma_50 = [Decimal(str(s.sma)) if s.sma else None for s in sma_50]
-        indicators_obj.sma_200 = [Decimal(str(s.sma)) if s.sma else None for s in sma_200]
-        indicators_obj.bb_upper = [Decimal(str(b.upper_band)) if b.upper_band else None for b in bb]
-        indicators_obj.bb_middle = [Decimal(str(b.sma)) if b.sma else None for b in bb]
-        indicators_obj.bb_lower = [Decimal(str(b.lower_band)) if b.lower_band else None for b in bb]
-        indicators_obj.rsi_14 = [Decimal(str(r.rsi)) if r.rsi else None for r in rsi]
-        indicators_obj.macd_line = [Decimal(str(m.macd)) if m.macd else None for m in macd]
-        indicators_obj.macd_signal = [Decimal(str(m.signal)) if m.signal else None for m in macd]
-        indicators_obj.macd_histogram = [Decimal(str(m.histogram)) if m.histogram else None for m in macd]
-        
+        indicators_obj.sma_20 = _to_decimal_list(indicator_series['sma_20'])
+        indicators_obj.sma_50 = _to_decimal_list(indicator_series['sma_50'])
+        indicators_obj.sma_200 = _to_decimal_list(indicator_series['sma_200'])
+        indicators_obj.bb_upper = _to_decimal_list(indicator_series['bb_upper'])
+        indicators_obj.bb_middle = _to_decimal_list(indicator_series['bb_median'])
+        indicators_obj.bb_lower = _to_decimal_list(indicator_series['bb_lower'])
+        indicators_obj.rsi_14 = _to_decimal_list(indicator_series['rsi'])
+        indicators_obj.macd_line = _to_decimal_list(indicator_series['macd_line'])
+        indicators_obj.macd_signal = _to_decimal_list(indicator_series['signal_line'])
+        indicators_obj.macd_histogram = _to_decimal_list(indicator_series['histogram'])
+
         logger.info("Calculated indicators for %s", market_data.symbol)
         return indicators_obj
     
@@ -405,35 +416,7 @@ class ChartGenerator:
         df = df.tail(config.lookback_periods).copy()
         df.reset_index(drop=True, inplace=True)
         
-        # Convert to Quote objects for stock_indicators
-        quotes = [
-            Quote(
-                date=row['Date'],
-                open=Decimal(str(row['Open'])),
-                high=Decimal(str(row['High'])),
-                low=Decimal(str(row['Low'])),
-                close=Decimal(str(row['Close'])),
-                volume=Decimal(str(row['Volume']))
-            )
-            for _, row in df.iterrows()
-        ]
-        
-        # Calculate indicators using stock_indicators library
-        # Note: 'indicators' parameter is TechnicalIndicators object, use stock_indicators_lib for library
-        indicators_dict = {
-            'sma_20': stock_indicators_lib.get_sma(quotes, 20),
-            'sma_50': stock_indicators_lib.get_sma(quotes, 50),
-            'sma_200': stock_indicators_lib.get_sma(quotes, 200),
-            'bb': stock_indicators_lib.get_bollinger_bands(quotes, 20, 2),
-            'supertrend': stock_indicators_lib.get_super_trend(quotes, 10, 3),
-            'macd': stock_indicators_lib.get_macd(quotes, 12, 26, 9),
-            'rsi': stock_indicators_lib.get_rsi(quotes, 14),
-            'atr': stock_indicators_lib.get_atr(quotes, 14),
-            'obv': calculate_obv(df)
-        }
-        
-        # Process indicators for plotting
-        processed_indicators = process_indicators(indicators_dict, df)
+        processed_indicators = build_chart_payload(df)
         
         # Create Plotly figure
         fig = create_plotly_figure(df, processed_indicators, config.symbol, height=config.height)

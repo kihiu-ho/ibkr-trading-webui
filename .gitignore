@@ -185,6 +185,7 @@ debug_mode_test_results.log
 # Local development
 .local/
 local/
+.ibkr-build/
 
 # Coverage reports
 .coverage.*
@@ -232,4 +233,3 @@ experiments/
 
 # Keep directory structure but ignore logs
 !reference/airflow/logs/.gitkeep
-

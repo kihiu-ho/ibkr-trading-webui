@@ -25,6 +25,9 @@ fi
 # Configuration
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$PROJECT_ROOT/logs"
+BUILD_META_DIR="$PROJECT_ROOT/.ibkr-build"
+BACKEND_REQUIREMENTS_PATH="$PROJECT_ROOT/backend/requirements.txt"
+BACKEND_REQUIREMENTS_HASH_FILE="$BUILD_META_DIR/backend_requirements.sha"
 
 # Command-line flags
 FORCE_REBUILD=false
@@ -86,6 +89,7 @@ done
 
 # Create logs directory
 mkdir -p "$LOG_DIR"
+mkdir -p "$BUILD_META_DIR"
 
 echo -e "${BLUE}=============================================="
 echo "IBKR Trading WebUI - Docker Startup"
@@ -248,6 +252,38 @@ print_header "Preparing Docker Images"
 
 cd "$PROJECT_ROOT"
 
+# Detect backend dependency changes to force rebuild automatically
+calc_file_hash() {
+    local file="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file" | awk '{print $1}'
+    else
+        echo ""
+    fi
+}
+
+REQUIREMENTS_CHANGED=false
+CURRENT_BACKEND_REQ_HASH=""
+if [ -f "$BACKEND_REQUIREMENTS_PATH" ]; then
+    CURRENT_BACKEND_REQ_HASH=$(calc_file_hash "$BACKEND_REQUIREMENTS_PATH")
+    if [ -n "$CURRENT_BACKEND_REQ_HASH" ]; then
+        if [ -f "$BACKEND_REQUIREMENTS_HASH_FILE" ]; then
+            SAVED_HASH=$(cat "$BACKEND_REQUIREMENTS_HASH_FILE" 2>/dev/null || true)
+        else
+            SAVED_HASH=""
+        fi
+        if [ "$CURRENT_BACKEND_REQ_HASH" != "$SAVED_HASH" ]; then
+            REQUIREMENTS_CHANGED=true
+            FORCE_REBUILD=true
+            print_info "Detected backend dependency changes; forcing backend image rebuild"
+        fi
+    else
+        print_info "Unable to calculate backend requirements hash (sha256sum/shasum missing)"
+    fi
+fi
+
 NEED_BUILD=false
 if ! detect_images; then
     NEED_BUILD=true
@@ -277,6 +313,9 @@ if [ "$NEED_BUILD" = true ]; then
     # Build backend image directly (avoid Compose's slow build path)
     print_info "Building backend image (ibkr-backend:latest)..."
     docker build -f docker/Dockerfile.backend -t ibkr-backend:latest .
+    if [ "$REQUIREMENTS_CHANGED" = true ] && [ -n "$CURRENT_BACKEND_REQ_HASH" ]; then
+        echo "$CURRENT_BACKEND_REQ_HASH" > "$BACKEND_REQUIREMENTS_HASH_FILE"
+    fi
     
     # Copy webapp directory to project root for gateway build (if it doesn't exist)
     if [ ! -d "webapp" ]; then
@@ -291,6 +330,8 @@ if [ "$NEED_BUILD" = true ]; then
     # Build Airflow image (using reference structure)
     print_info "Building Airflow image (ibkr-airflow:latest)..."
     docker build -f reference/airflow/airflow/Dockerfile -t ibkr-airflow:latest reference/airflow/airflow/
+    print_info "Verifying Kaleido inside ibkr-airflow:latest..."
+    ./scripts/verify_kaleido.sh --image ibkr-airflow:latest
     
     # Build MLflow image (using reference structure)
     print_info "Building MLflow image (ibkr-mlflow:latest)..."

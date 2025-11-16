@@ -8,57 +8,42 @@ RUN mkdir -p /app/charts && \
     echo "✓ Created /app/charts directory with full permissions"
 
 # Install system dependencies for ML packages (lightgbm, xgboost, etc.)
-# Also install .NET 8.0 runtime for stock-indicators library using official install script
-# Note: stock-indicators requires .NET runtime to work
-# Install Chromium for Kaleido chart generation (Plotly image export)
+# and Chromium for Kaleido chart generation (Plotly image export)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     wget \
     ca-certificates \
     chromium \
     chromium-driver \
-    && wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh \
-    && chmod +x dotnet-install.sh \
-    && ./dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet \
-    && ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet \
-    && rm dotnet-install.sh \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for ultra-fast package management (10-100x faster than pip)
 RUN python3 -m pip install --no-cache-dir uv
 
+# Copy Airflow runtime requirements (chart + ML dependencies including Kaleido)
+COPY airflow/requirements-airflow.txt /tmp/requirements-airflow.txt
+
 # Switch to airflow user to install packages in their environment
 USER airflow
 
-# Install additional ML and data processing packages using uv
+# Install additional ML and data processing packages using uv (from requirements file)
 # uv is much faster and more reliable than pip for large packages
 # Install to airflow user's Python environment (same as Airflow itself)
-RUN uv pip install --no-cache \
-    xgboost \
-    mlflow \
-    kafka-python \
-    catboost \
-    pyspark \
-    lightgbm \
-    imblearn \
-    scikit-learn \
-    tqdm \
-    tqdm-joblib \
-    confluent-kafka \
-    pandas \
-    numpy \
-    matplotlib \
-    mplfinance \
-    plotly \
-    kaleido \
-    stock-indicators \
-    pandas-ta \
-    pydantic \
-    openai \
-    anthropic \
-    ib-insync \
-    minio \
+RUN uv pip install --system --no-cache -r /tmp/requirements-airflow.txt \
+    && rm -f /tmp/requirements-airflow.txt \
     && echo "✓ Installed ML and data processing packages using uv"
+
+# Build-time verification that Kaleido is importable
+RUN python3 - <<'PY'
+import importlib
+import plotly.io as pio
+import kaleido  # noqa: F401
+
+scope = getattr(pio, 'kaleido', None) or getattr(pio.defaults, 'kaleido_scope', None)
+if scope is None:
+    raise SystemExit('Plotly does not expose a Kaleido scope; verify plotly>=5.0 is installed.')
+print('✓ Kaleido import check passed; version:', kaleido.__version__)
+PY
 
 # Patch the hardcoded timeout from 120 seconds to 300 seconds
 # This fixes the "No response from gunicorn master within 120 seconds" error

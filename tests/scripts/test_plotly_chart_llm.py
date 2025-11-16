@@ -7,7 +7,7 @@ Tests:
 3. Verification of all features
 
 Requirements:
-- stock_indicators, plotly, kaleido installed
+- plotly and kaleido installed
 - LLM_API_KEY environment variable set (optional, for LLM tests)
 """
 import sys
@@ -309,4 +309,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

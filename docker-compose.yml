@@ -101,6 +101,7 @@ x-airflow-common: &airflow-common
     ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
   volumes:
     - ./dags:/opt/airflow/dags
+    - ./shared:/opt/airflow/dags/shared:ro
     - ./reference/airflow/logs:/opt/airflow/logs
     - ./reference/airflow/config:/opt/airflow/config
     - ./reference/airflow/plugins:/opt/airflow/plugins
@@ -261,6 +262,8 @@ services:
     volumes:
       - ./backend:/app/backend:ro
       - ./frontend:/app/frontend:ro
+      - ./webapp:/app/webapp:ro
+      - ./shared:/app/shared:ro
       - ./logs:/app/logs
       - charts_data:/app/charts:rw  # Shared volume for chart files with read-write permissions
     depends_on:
@@ -297,6 +300,8 @@ services:
     environment: *common-env
     volumes:
       - ./backend:/app/backend:ro
+      - ./shared:/app/shared:ro
+      - ./webapp:/app/webapp:ro
       - ./logs:/app/logs
     depends_on:
       redis:
@@ -324,6 +329,8 @@ services:
     environment: *common-env
     volumes:
       - ./backend:/app/backend:ro
+      - ./shared:/app/shared:ro
+      - ./webapp:/app/webapp:ro
       - ./logs:/app/logs
     depends_on:
       redis:

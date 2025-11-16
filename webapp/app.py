@@ -8,8 +8,6 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import io
 import logging
-from stock_indicators import indicators, Quote
-from decimal import Decimal
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.io as pio
@@ -23,6 +21,8 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 import threading
+
+from shared.indicator_engine import build_chart_payload
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -170,49 +170,6 @@ def fetch_market_data(conid, period, bar, outside_rth, mode='realtime'):
     except requests.RequestException as e:
         logger.error(f"Error fetching market data: {str(e)}")
         raise
-
-
-# Helper functions
-def calculate_obv(df):
-    obv = [0]
-    for i in range(1, len(df)):
-        if df['Close'].iloc[i] > df['Close'].iloc[i - 1]:
-            obv.append(obv[-1] + df['Volume'].iloc[i])
-        elif df['Close'].iloc[i] < df['Close'].iloc[i - 1]:
-            obv.append(obv[-1] - df['Volume'].iloc[i])
-        else:
-            obv.append(obv[-1])
-    return obv
-
-
-def normalize_value(value):
-    if abs(value) >= 1_000_000_000:
-        return value / 1_000_000_000, "B"
-    elif abs(value) >= 1_000_000:
-        return value / 1_000_000, "M"
-    return value, ""
-
-
-def process_indicators(indicators_dict, df):
-    obv_normalized, obv_unit = normalize_value(indicators_dict['obv'][-1])
-    return {
-        'sma_20': [float(s.sma) if s.sma else None for s in indicators_dict['sma_20']],
-        'sma_50': [float(s.sma) if s.sma else None for s in indicators_dict['sma_50']],
-        'sma_200': [float(s.sma) if s.sma else None for s in indicators_dict['sma_200']],
-        'bb_upper': [float(b.upper_band) if b.upper_band else None for b in indicators_dict['bb']],
-        'bb_lower': [float(b.lower_band) if b.lower_band else None for b in indicators_dict['bb']],
-        'bb_median': [float(b.sma) if b.sma else None for b in indicators_dict['bb']],
-        'st_values': [float(s.super_trend) if s.super_trend else None for s in indicators_dict['supertrend']],
-        'st_direction': [1 if s.upper_band else -1 if s.lower_band else 0 for s in indicators_dict['supertrend']],
-        'macd_line': [float(m.macd) if m.macd else None for m in indicators_dict['macd']],
-        'signal_line': [float(m.signal) if m.signal else None for m in indicators_dict['macd']],
-        'histogram': [float(m.histogram) if m.histogram else None for m in indicators_dict['macd']],
-        'rsi': [float(r.rsi) if r.rsi else None for r in indicators_dict['rsi']],
-        'atr': [float(a.atr) if a.atr else None for a in indicators_dict['atr']],
-        'obv_normalized': [x / (1_000_000_000 if obv_unit == "B" else 1_000_000) for x in indicators_dict['obv']],
-        'obv_unit': obv_unit,
-        'volume': df['Volume'] / 1_000_000
-    }
 
 
 def create_plotly_figure(df, processed_indicators, symbol):
@@ -376,24 +333,7 @@ def create_plotly_figure(df, processed_indicators, symbol):
 
 
 def generate_technical_chart(df, symbol, width, height):
-    quotes = [Quote(date=row['Date'].to_pydatetime(), open=Decimal(str(row['Open'])),
-                    high=Decimal(str(row['High'])), low=Decimal(str(row['Low'])),
-                    close=Decimal(str(row['Close'])), volume=Decimal(str(row['Volume'])))
-              for _, row in df.iterrows()]
-
-    indicators_dict = {
-        'sma_20': indicators.get_sma(quotes, 20),
-        'sma_50': indicators.get_sma(quotes, 50),
-        'sma_200': indicators.get_sma(quotes, 200),
-        'bb': indicators.get_bollinger_bands(quotes, 20, 2),
-        'supertrend': indicators.get_super_trend(quotes, 10, 3),
-        'macd': indicators.get_macd(quotes, 12, 26, 9),
-        'rsi': indicators.get_rsi(quotes, 14),
-        'atr': indicators.get_atr(quotes, 14),
-        'obv': calculate_obv(df)
-    }
-
-    processed_indicators = process_indicators(indicators_dict, df)
+    processed_indicators = build_chart_payload(df)
     fig = create_plotly_figure(df, processed_indicators, symbol)
     buf = io.BytesIO()
     pio.write_image(fig, buf, format='jpeg', width=width, height=height)
@@ -675,24 +615,7 @@ def history_chart_stats(conid):
                   inplace=True)
         df = df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']]
 
-        quotes = [Quote(date=row['Date'].to_pydatetime(), open=Decimal(str(row['Open'])),
-                        high=Decimal(str(row['High'])), low=Decimal(str(row['Low'])),
-                        close=Decimal(str(row['Close'])), volume=Decimal(str(row['Volume'])))
-                  for _, row in df.iterrows()]
-
-        indicators_dict = {
-            'sma_20': indicators.get_sma(quotes, 20),
-            'sma_50': indicators.get_sma(quotes, 50),
-            'sma_200': indicators.get_sma(quotes, 200),
-            'bb': indicators.get_bollinger_bands(quotes, 20, 2),
-            'supertrend': indicators.get_super_trend(quotes, 10, 3),
-            'macd': indicators.get_macd(quotes, 12, 26, 9),
-            'rsi': indicators.get_rsi(quotes, 14),
-            'atr': indicators.get_atr(quotes, 14),
-            'obv': calculate_obv(df)
-        }
-
-        processed = process_indicators(indicators_dict, df)
+        processed = build_chart_payload(df)
         latest = df.iloc[-1]
 
         stats = {

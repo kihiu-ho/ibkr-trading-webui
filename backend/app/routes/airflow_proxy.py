@@ -2,11 +2,13 @@
 Airflow API Proxy Routes (FastAPI)
 Proxy requests to Airflow REST API
 """
+import logging
+from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 import requests
 from requests.auth import HTTPBasicAuth
-import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -14,12 +16,101 @@ router = APIRouter()
 AIRFLOW_API_URL = "http://airflow-webserver:8080/api/v1"
 AIRFLOW_USER = "airflow"
 AIRFLOW_PASSWORD = "airflow"
+_FAILABLE_STATES = {"running", "queued", "scheduled", "up_for_retry", "up_for_reschedule"}
+
+
+class DagRunFailError(Exception):
+    """Represents validation or Airflow errors when forcing a run to fail."""
+
+    def __init__(self, message: str, status_code: int = 400, payload: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.payload = payload or {}
 
 def get_airflow_session():
     """Get configured Airflow API session"""
     session = requests.Session()
     session.auth = HTTPBasicAuth(AIRFLOW_USER, AIRFLOW_PASSWORD)
     return session
+
+
+def _safe_json(response: requests.Response) -> Optional[Any]:
+    """Attempt to read JSON content from a response."""
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
+def _extract_response_detail(response: requests.Response) -> Any:
+    """Return best-effort detail payload for logging or surfacing errors."""
+    data = _safe_json(response)
+    if data is not None:
+        return data
+    text = getattr(response, "text", None)
+    if text:
+        return text
+    content = getattr(response, "content", b"")
+    try:
+        return content.decode("utf-8") if content else ""
+    except Exception:
+        return str(content)
+
+
+def _fail_dag_run(session: requests.Session, dag_id: str, dag_run_id: str) -> Dict[str, Any]:
+    """Mark a DAG run as failed via the Airflow REST API."""
+    from urllib.parse import quote
+
+    encoded_run_id = quote(dag_run_id, safe="")
+    run_url = f"{AIRFLOW_API_URL}/dags/{dag_id}/dagRuns/{encoded_run_id}"
+
+    run_response = session.get(run_url)
+    if run_response.status_code == 404:
+        raise DagRunFailError(
+            f'DAG run "{dag_run_id}" was not found',
+            status_code=404,
+            payload={"dag_id": dag_id, "dag_run_id": dag_run_id}
+        )
+    if run_response.status_code != 200:
+        raise DagRunFailError(
+            f"Unable to fetch DAG run {dag_run_id}",
+            status_code=run_response.status_code,
+            payload={"airflow_response": _extract_response_detail(run_response)}
+        )
+
+    run_data = _safe_json(run_response)
+    if not isinstance(run_data, dict):
+        raise DagRunFailError(
+            "Airflow returned invalid DAG run payload",
+            status_code=502
+        )
+
+    current_state = (run_data.get("state") or "").lower()
+    if current_state not in _FAILABLE_STATES:
+        raise DagRunFailError(
+            f'DAG run "{dag_run_id}" is already {current_state or "completed"}',
+            status_code=409,
+            payload={"current_state": current_state or None}
+        )
+
+    patch_response = session.patch(run_url, json={"state": "failed"})
+    if patch_response.status_code not in (200, 201, 204):
+        raise DagRunFailError(
+            "Airflow rejected fail request",
+            status_code=patch_response.status_code,
+            payload={"airflow_response": _extract_response_detail(patch_response)}
+        )
+
+    patched_data = _safe_json(patch_response) or {}
+    new_state = (patched_data.get("state") or "failed").lower()
+
+    return {
+        "dag_id": dag_id,
+        "dag_run_id": dag_run_id,
+        "previous_state": current_state,
+        "new_state": new_state,
+        "airflow_response": patched_data or None,
+    }
 
 
 def _build_airflow_response(response: requests.Response, *, context: str = "Airflow API") -> Response:
@@ -118,6 +209,62 @@ async def dag_runs(dag_id: str, request: Request):
     except Exception as e:
         logger.error(f"Failed to handle DAG runs for {dag_id}: {e}", exc_info=True)
         return JSONResponse(content={'error': str(e)}, status_code=500)
+
+
+@router.post('/dags/{dag_id}/dagRuns/{dag_run_id}/fail')
+async def fail_dag_run(dag_id: str, dag_run_id: str, request: Request):
+    """Mark a DAG run as failed to stop workflow execution."""
+    payload: Dict[str, Any] = {}
+    try:
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        reason = (payload.get('reason') or '').strip()
+
+        session = get_airflow_session()
+        result = _fail_dag_run(session, dag_id, dag_run_id)
+
+        logger.info(
+            "DAG run fail requested: dag_id=%s dag_run_id=%s previous_state=%s reason=%s",
+            dag_id,
+            dag_run_id,
+            result.get('previous_state'),
+            reason or 'n/a'
+        )
+
+        response_payload = {
+            'message': 'DAG run marked as failed',
+            **result,
+            'reason': reason,
+        }
+        return JSONResponse(content=response_payload, status_code=200)
+    except DagRunFailError as exc:
+        logger.warning(
+            "Failed to mark DAG run %s/%s as failed: %s",
+            dag_id,
+            dag_run_id,
+            exc
+        )
+        error_payload = {
+            'error': 'Failed to mark DAG run as failed',
+            'message': str(exc),
+        }
+        if exc.payload:
+            error_payload.update(exc.payload)
+        reason = (payload.get('reason') or '').strip() if isinstance(payload, dict) else ''
+        if reason:
+            error_payload['reason'] = reason
+        return JSONResponse(content=error_payload, status_code=exc.status_code)
+    except Exception as e:
+        logger.error(
+            "Unexpected error when failing DAG run %s/%s: %s",
+            dag_id,
+            dag_run_id,
+            e,
+            exc_info=True
+        )
+        return JSONResponse(content={'error': 'Unexpected error', 'message': str(e)}, status_code=500)
 
 
 async def validate_trigger_conditions(session, dag_id: str):

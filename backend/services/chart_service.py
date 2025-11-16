@@ -22,13 +22,17 @@ class ChartService:
     
     def __init__(self):
         """Initialize the chart service."""
-        # Set plotly renderer for server-side export
         try:
-            pio.kaleido.scope.mathjax = None
-            # Try to set chromium path if available
-            import os
-            if 'CHROMIUM_PATH' in os.environ:
-                pio.kaleido.scope.chromium_args += (f"--single-process",)
+            scope = getattr(pio.defaults, 'kaleido_scope', None)
+            if scope is None:
+                scope = getattr(pio, 'kaleido').scope
+            scope.mathjax = None
+            chromium_args = list(getattr(scope, 'chromium_args', ()))
+            for arg in ("--single-process", "--disable-gpu"):
+                if arg not in chromium_args:
+                    chromium_args.append(arg)
+            scope.chromium_args = tuple(chromium_args)
+            logger.debug("Kaleido defaults initialized for backend chart service")
         except Exception as e:
             logger.warning(f"Kaleido initialization warning: {e}")
         

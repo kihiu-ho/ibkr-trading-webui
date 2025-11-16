@@ -397,24 +397,38 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
         self.assertEqual(result['total_value'], 100000.0)
         self.assertEqual(result['cash'], 50000.0)
     
+    @patch('dags.ibkr_trading_signal_workflow.attach_artifact_lineage')
     @patch('dags.ibkr_trading_signal_workflow.mlflow_run_context')
-    @patch('dags.ibkr_trading_signal_workflow.shutil.copy')
-    @patch('dags.ibkr_trading_signal_workflow.requests')
-    def test_log_to_mlflow_task(self, mock_requests, mock_shutil_copy, mock_mlflow_run_context):
+    def test_log_to_mlflow_task(self, mock_mlflow_run_context, mock_attach_lineage):
         mock_market_data = MarketData(
-            symbol=SYMBOL, bars=[], latest_price=100.0, timeframe='1 day'
+            symbol=SYMBOL,
+            bars=[
+                OHLCVBar(timestamp=datetime(2025, 1, 1), open=100.0, high=101.0, low=99.5, close=100.5, volume=1000)
+            ],
+            latest_price=100.0,
+            timeframe='1 day'
         )
         mock_signal = TradingSignal(
             symbol=SYMBOL, action=SignalAction.BUY, confidence=SignalConfidence.HIGH,
             confidence_score=90, reasoning="Test reasoning", is_actionable=True,
-            suggested_entry_price=101.0, model_used='mock_model'
+            suggested_entry_price=101.0, model_used='mock_model', timeframe_analyzed='daily'
         )
         mock_daily_chart = ChartResult(
-            symbol=SYMBOL, timeframe=Timeframe.DAILY, file_path='/tmp/charts/daily.png',
+            symbol=SYMBOL,
+            timeframe=Timeframe.DAILY,
+            file_path='/tmp/charts/daily.png',
+            width=1920,
+            height=1080,
+            periods_shown=60,
             indicators_included=['SMA']
         )
         mock_weekly_chart = ChartResult(
-            symbol=SYMBOL, timeframe=Timeframe.WEEKLY, file_path='/tmp/charts/weekly.png',
+            symbol=SYMBOL,
+            timeframe=Timeframe.WEEKLY,
+            file_path='/tmp/charts/weekly.png',
+            width=1440,
+            height=900,
+            periods_shown=52,
             indicators_included=['SMA']
         )
         mock_portfolio = Portfolio(
@@ -424,36 +438,39 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
                                 current_price=100.0, market_value=1000.0, unrealized_pnl=100.0,
                                 unrealized_pnl_percent=10.0)]
         )
+        def xcom_pull_side_effect(task_ids=None, key=None):
+            lookup = {
+                ('fetch_market_data', 'market_data'): mock_market_data.model_dump_json(),
+                ('analyze_with_llm', 'trading_signal'): mock_signal.model_dump_json(),
+                ('generate_daily_chart', 'daily_chart'): mock_daily_chart.model_dump_json(),
+                ('generate_weekly_chart', 'weekly_chart'): mock_weekly_chart.model_dump_json(),
+                ('get_portfolio', 'portfolio'): mock_portfolio.model_dump_json(),
+                ('place_order', 'order_placed'): True,
+                ('generate_daily_chart', 'daily_chart_artifact_id'): 201,
+                ('generate_weekly_chart', 'weekly_chart_artifact_id'): 202,
+                ('analyze_with_llm', 'llm_artifact_id'): 301,
+                ('analyze_with_llm', 'signal_artifact_id'): 302,
+            }
+            return lookup.get((task_ids, key))
 
-        self.mock_context['task_instance'].xcom_pull.side_effect = [
-            mock_market_data.model_dump_json(),
-            mock_signal.model_dump_json(),
-            mock_daily_chart.model_dump_json(),
-            mock_weekly_chart.model_dump_json(),
-            mock_portfolio.model_dump_json(),
-            True # order_placed
-        ]
+        self.mock_context['task_instance'].xcom_pull.side_effect = xcom_pull_side_effect
 
         mock_tracker = MagicMock()
         mock_tracker.run_id = 'mlflow_run_id_123'
+        mock_tracker.experiment_id = 'exp_456'
         mock_mlflow_run_context.return_value.__enter__.return_value = mock_tracker
-
-        # Mock requests.get and requests.patch for artifact updates
-        mock_requests.get.return_value.status_code = 200
-        mock_requests.get.return_value.json.return_value = {'artifacts': [{'id': 'artifact_id_1', 'run_id': None}]}
-        mock_requests.patch.return_value.status_code = 200
 
         result = log_to_mlflow_task(**self.mock_context)
 
         mock_mlflow_run_context.assert_called_once()
         mock_tracker.log_params.assert_called_once()
         mock_tracker.log_metrics.assert_called_once()
-        mock_tracker.log_artifact_dict.assert_any_call(json.loads(mock_signal.model_dump_json()), 'trading_signal.json')
-        mock_shutil_copy.assert_any_call(mock_daily_chart.file_path, 'daily_chart.png')
-        mock_shutil_copy.assert_any_call(mock_weekly_chart.file_path, 'weekly_chart.png')
-        mock_tracker.log_artifact_dict.assert_any_call(json.loads(mock_portfolio.model_dump_json()), 'portfolio.json')
-        mock_requests.get.assert_called_once_with(f"http://backend:8000/api/artifacts/?symbol={SYMBOL}&limit=10")
-        mock_requests.patch.assert_called_once()
+        self.assertGreaterEqual(mock_tracker.log_artifact_dict.call_count, 2)
+        mock_attach_lineage.assert_called_once_with(
+            [201, 202, 301, 302],
+            'mlflow_run_id_123',
+            'exp_456'
+        )
         self.assertEqual(result['mlflow_run_id'], 'mlflow_run_id_123')
 
 if __name__ == '__main__':

@@ -24,14 +24,12 @@ def validate_chart_generator():
     
     checks = {
         "Uses Plotly": "import plotly" in content or "from plotly" in content,
-        "Uses stock_indicators": "from stock_indicators import" in content,
-        "Has calculate_obv function": "def calculate_obv" in content,
-        "Has normalize_value function": "def normalize_value" in content,
-        "Has process_indicators function": "def process_indicators" in content,
+        "Uses shared indicator engine": "shared.indicator_engine" in content,
         "Has create_plotly_figure function": "def create_plotly_figure" in content,
         "Exports JPEG": "format='jpeg'" in content or "format='jpeg'" in content.lower(),
         "7 subplots": "rows=7" in content or "make_subplots(rows=7" in content,
         "No matplotlib/mplfinance": "import matplotlib" not in content and "import mplfinance" not in content,
+        "No stock_indicators": "stock_indicators" not in content,
     }
     
     all_passed = True
@@ -174,4 +172,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

@@ -87,6 +87,12 @@ async def symbols(request: Request):
     return templates.TemplateResponse("symbols.html", {"request": request})
 
 
+@router.get("/workflow-symbols", response_class=HTMLResponse)
+async def workflow_symbols(request: Request):
+    """Workflow symbol management page."""
+    return templates.TemplateResponse("workflow_symbols.html", {"request": request})
+
+
 @router.get("/ibkr/login", response_class=HTMLResponse)
 async def ibkr_login(request: Request):
     """IBKR Gateway authentication page."""

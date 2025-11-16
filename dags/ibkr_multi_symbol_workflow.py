@@ -3,6 +3,7 @@ IBKR Multi-Symbol Trading Signal Workflow
 Processes TSLA and NVDA in parallel: Market Data → Charts → LLM Analysis → Order → Portfolio Tracking
 """
 from datetime import datetime, timedelta
+from typing import List
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
@@ -53,7 +54,33 @@ default_args = {
 }
 
 # Configuration from environment
-SYMBOLS = ["TSLA", "NVDA"]  # NASDAQ symbols to process
+# Fetch symbols dynamically from backend API
+def get_enabled_symbols() -> List[str]:
+    """Fetch enabled symbols from backend API."""
+    try:
+        import requests
+        backend_url = os.getenv('BACKEND_API_URL', 'http://backend:8000')
+        response = requests.get(
+            f"{backend_url}/api/workflow-symbols/?enabled_only=true",
+            timeout=5
+        )
+        if response.status_code == 200:
+            symbols_data = response.json()
+            # Sort by priority (descending) and extract symbols
+            symbols = [s['symbol'] for s in sorted(
+                symbols_data,
+                key=lambda x: x.get('priority', 0),
+                reverse=True
+            )]
+            logger.info(f"Fetched {len(symbols)} enabled symbols from backend: {symbols}")
+            return symbols if symbols else ['TSLA', 'NVDA']  # Fallback
+    except Exception as e:
+        logger.warning(f"Failed to fetch symbols from backend: {e}")
+    
+    # Fallback to defaults
+    return ['TSLA', 'NVDA']
+
+SYMBOLS = get_enabled_symbols()  # NASDAQ symbols to process
 IBKR_HOST = "gateway"  # Docker service name
 IBKR_PORT = 4002  # Paper trading port
 POSITION_SIZE = 10  # Number of shares per symbol

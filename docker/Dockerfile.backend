@@ -63,6 +63,8 @@ WORKDIR /app
 # Copy application code with proper ownership
 COPY --chown=appuser:appuser backend ./backend/
 COPY --chown=appuser:appuser frontend ./frontend/
+COPY --chown=appuser:appuser webapp ./webapp/
+COPY --chown=appuser:appuser shared ./shared/
 COPY --chown=appuser:appuser scripts ./scripts/
 
 # Create logs directory
@@ -83,4 +85,3 @@ EXPOSE 8000
 
 # Use exec form for better signal handling and faster startup
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
-

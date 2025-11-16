@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from backend.api import health, orders, market_data, market_data_cache, frontend, dashboard, ibkr_auth, indicators, positions, charts, llm_analyses, artifacts, chart_images
+from backend.api import health, orders, market_data, market_data_cache, frontend, dashboard, ibkr_auth, indicators, positions, charts, llm_analyses, artifacts, chart_images, workflow_symbols
 from backend.app.routes import airflow_proxy, mlflow_proxy
 from backend.core.database import engine, get_db
 from backend.models import Base
@@ -44,6 +44,7 @@ app.include_router(charts.router, prefix="/api", tags=["charts"])
 app.include_router(llm_analyses.router, prefix="/api", tags=["llm-analyses"])
 app.include_router(artifacts.router, prefix="/api/artifacts", tags=["artifacts"])
 app.include_router(chart_images.router, prefix="/api/artifacts", tags=["artifacts"])
+app.include_router(workflow_symbols.router, tags=["workflow-symbols"])
 
 # Frontend routes
 app.include_router(frontend.router, tags=["frontend"])

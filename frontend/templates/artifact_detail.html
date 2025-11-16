@@ -218,41 +218,64 @@
             </h3>
             
                 <div x-show="artifact.image_path || (artifact.chart_data && artifact.chart_data.minio_url)" class="mb-4">
-                    <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                        <!-- Display chart image using proxy endpoint -->
-                        <div class="mb-3" x-data="{ imageError: false, imageLoading: true }">
+                    <div class="bg-gray-50 rounded-lg p-4 border border-gray-200" x-data="chartImageViewerState()" x-init="init()" x-effect="syncWithArtifact(artifact)">
+                        <div class="mb-3">
                             <div x-show="imageLoading" class="text-center py-8">
                                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                                <p class="text-sm text-gray-500 mt-2">Loading chart image...</p>
+                                <p class="text-sm text-gray-500 mt-2">Regenerating chart image...</p>
                             </div>
                             <img 
-                                :src="'/api/artifacts/' + artifact.id + '/image'" 
+                                x-show="!imageError && currentSrc"
+                                :src="currentSrc || ('/api/artifacts/' + artifact.id + '/image')"
                                 :alt="artifact.name || 'Chart'" 
                                 class="rounded-lg w-full max-w-4xl border border-gray-300 mx-auto"
-                                x-show="!imageError && !imageLoading"
-                                @load="imageLoading = false; $el.style.display = 'block'; imageError = false"
-                                @error="imageError = true; imageLoading = false; console.error('Image load error for artifact', artifact.id)"
-                                style="display: none;"
+                                @load="onImageLoad"
+                                @error="onImageError"
+                                x-cloak
                                 crossorigin="anonymous"
                             />
-                            <div x-show="imageError" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
-                                <i class="fa fa-exclamation-triangle mr-2"></i>
-                                Chart image not available. 
-                                <span x-show="artifact.image_path" class="text-xs block mt-1">Path: <span class="font-mono break-all" x-text="artifact.image_path"></span></span>
-                                <button @click="imageError = false; imageLoading = true; const img = $el.previousElementSibling.previousElementSibling; if (img) { img.src = '/api/artifacts/' + artifact.id + '/image?t=' + Date.now(); }" class="mt-2 text-xs text-yellow-700 hover:text-yellow-900 underline">Retry</button>
+                            <div x-show="htmlFallback" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
+                                <i class="fa fa-code mr-2"></i>
+                                Plotly saved this artifact as interactive HTML because Kaleido was offline.
+                                <span class="text-xs block mt-1">Path: <span class="font-mono break-all" x-text="artifact.image_path"></span></span>
+                                <div class="mt-3 flex flex-wrap gap-3 items-center">
+                                    <button @click="showEmbeddedHtml = !showEmbeddedHtml" class="px-3 py-1 text-xs font-semibold bg-yellow-600 text-white rounded hover:bg-yellow-700">
+                                        <i class="fa fa-eye mr-1"></i><span x-text="showEmbeddedHtml ? 'Hide inline view' : 'View inline' "></span>
+                                    </button>
+                                    <button @click="openHtmlFallback" class="px-3 py-1 text-xs font-semibold bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                                        <i class="fa fa-up-right-from-square mr-1"></i>Open interactive HTML
+                                    </button>
+                                    <button @click="retryFetch" class="text-xs text-yellow-700 hover:text-yellow-900 underline">
+                                        Retry after regeneration
+                                    </button>
+                                </div>
+                                <div x-show="showEmbeddedHtml" class="mt-3 border border-yellow-200 rounded overflow-hidden" style="min-height: 480px;">
+                                    <iframe :src="'/api/artifacts/' + artifact.id + '/image?format=html'" class="w-full" style="min-height: 480px;" sandbox="allow-same-origin allow-scripts allow-popups"></iframe>
+                                </div>
                             </div>
-                            <div class="mt-2 space-y-1" x-show="!imageError">
-                                <p class="text-xs text-gray-500" x-show="artifact.chart_data && artifact.chart_data.minio_url">
-                                    <i class="fa fa-cloud mr-1"></i> MinIO URL: <span class="font-mono text-xs break-all" x-text="artifact.chart_data.minio_url"></span>
-                                </p>
-                                <p class="text-xs text-gray-500" x-show="artifact.image_path">
-                                    <span x-show="artifact.image_path && artifact.image_path.startsWith('http')">MinIO URL: </span>
-                                    <span x-show="artifact.image_path && !artifact.image_path.startsWith('http')">Local Path: </span>
-                                    <span class="font-mono text-xs break-all" x-text="artifact.image_path"></span>
-                                </p>
-                                <a :href="'/api/artifacts/' + artifact.id + '/image'" target="_blank" class="text-xs text-blue-600 hover:text-blue-800 inline-block mt-1">
-                                    <i class="fa fa-external-link mr-1"></i>Open in new tab
+                            <div x-show="imageError && !htmlFallback" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
+                                <i class="fa fa-exclamation-triangle mr-2"></i>
+                                Chart image not available yet. The backend will regenerate it from the stored snapshot.
+                                <span x-show="artifact.image_path" class="text-xs block mt-1">Path: <span class="font-mono break-all" x-text="artifact.image_path"></span></span>
+                                <button @click="retryFetch" class="mt-2 text-xs text-yellow-700 hover:text-yellow-900 underline">Retry now</button>
+                            </div>
+                        </div>
+                        <div class="mt-2 space-y-1">
+                            <p class="text-xs text-gray-500" x-show="artifact.chart_data && artifact.chart_data.minio_url">
+                                <i class="fa fa-cloud mr-1"></i> MinIO URL: <span class="font-mono text-xs break-all" x-text="artifact.chart_data.minio_url"></span>
+                            </p>
+                            <p class="text-xs text-gray-500" x-show="artifact.image_path">
+                                <span x-show="artifact.image_path && artifact.image_path.startsWith('http')">Remote Path: </span>
+                                <span x-show="artifact.image_path && !artifact.image_path.startsWith('http')">Local Path: </span>
+                                <span class="font-mono text-xs break-all" x-text="artifact.image_path"></span>
+                            </p>
+                            <div class="flex flex-wrap gap-3">
+                                <a :href="'/api/artifacts/' + artifact.id + '/image'" target="_blank" class="text-xs text-blue-600 hover:text-blue-800 inline-flex items-center gap-1">
+                                    <i class="fa fa-external-link"></i>Open latest image
                                 </a>
+                                <button x-show="htmlFallback" @click="openHtmlFallback" class="text-xs text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
+                                    <i class="fa fa-up-right-from-square"></i>Open HTML fallback
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -359,6 +382,7 @@
                         <div class="mb-2 text-xs text-gray-500">
                             Showing <span x-text="marketData.length"></span> bars
                         </div>
+                        <p class="text-xs text-gray-500 mb-2">Snapshot data captured with each chart ensures this table loads even if the shared market data cache is empty.</p>
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
@@ -387,7 +411,7 @@
                     
                     <div x-show="!loadingMarketData && !marketDataError && marketData.length === 0" class="text-center py-4 text-gray-500">
                         <i class="fa fa-info-circle mr-2"></i>
-                        <p>No market data available for this artifact</p>
+                        <p>Market data snapshot is still populating. Please retry in a moment.</p>
                     </div>
                 </div>
             </div>
@@ -498,6 +522,97 @@
 </div>
 
 <script>
+if (typeof window.showToast !== 'function') {
+    window.showToast = function(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        const palette = {
+            success: 'bg-green-600',
+            error: 'bg-red-600',
+            warning: 'bg-yellow-600',
+            info: 'bg-blue-600'
+        };
+        const toast = document.createElement('div');
+        toast.className = `${palette[type] || palette.info} text-white px-4 py-2 rounded shadow-lg transition-opacity`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.classList.add('opacity-0');
+            setTimeout(() => toast.remove(), 300);
+        }, 3500);
+    };
+}
+
+function chartImageViewerState() {
+    return {
+        artifactSnapshot: null,
+        imageLoading: true,
+        imageError: false,
+        htmlFallback: false,
+        htmlPath: null,
+        currentSrc: null,
+        showEmbeddedHtml: false,
+        init() {
+            if (typeof artifact !== 'undefined' && artifact) {
+                this.syncWithArtifact(artifact);
+            }
+        },
+        syncWithArtifact(latest) {
+            if (!latest) {
+                return;
+            }
+            this.artifactSnapshot = latest;
+            const originalPath = latest.image_path || '';
+            this.htmlFallback = originalPath.toLowerCase().endsWith('.html');
+            this.htmlPath = originalPath || null;
+            if (this.htmlFallback) {
+                this.imageLoading = false;
+                this.imageError = true;
+                this.currentSrc = null;
+            } else {
+                this.imageLoading = true;
+                this.imageError = false;
+                this.currentSrc = `/api/artifacts/${latest.id}/image?t=${Date.now()}`;
+            }
+        },
+        retryFetch() {
+            const current = this.artifactSnapshot || (window.artifactDetailData && window.artifactDetailData.artifact);
+            if (!current) {
+                return;
+            }
+            this.imageLoading = true;
+            this.imageError = false;
+            this.currentSrc = `/api/artifacts/${current.id}/image?t=${Date.now()}`;
+        },
+        onImageLoad() {
+            this.imageLoading = false;
+            this.imageError = false;
+            this.htmlFallback = false;
+            if (window.showToast) {
+                window.showToast('Chart image regenerated successfully.', 'success');
+            }
+        },
+        onImageError() {
+            this.imageLoading = false;
+            this.imageError = true;
+            if (window.showToast) {
+                window.showToast('Chart image still unavailable. Retrying after backend regeneration.', 'error');
+            }
+        },
+        openHtmlFallback() {
+            const current = this.artifactSnapshot || (window.artifactDetailData && window.artifactDetailData.artifact);
+            if (!current) {
+                return;
+            }
+            if (this.htmlPath && this.htmlPath.startsWith('http')) {
+                window.open(this.htmlPath, '_blank');
+            } else {
+                window.open(`/api/artifacts/${current.id}/image?format=html`, '_blank');
+            }
+        }
+    };
+}
+
 function artifactDetailData() {
     return {
         artifact: null,
@@ -543,4 +658,3 @@ function artifactDetailData() {
 }
 </script>
 {% endblock %}
-

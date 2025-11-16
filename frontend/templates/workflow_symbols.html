@@ -1,0 +1,430 @@
+{% extends "base.html" %}
+
+{% block title %}Symbol Management{% endblock %}
+{% block page_title %}Workflow Symbols{% endblock %}
+
+{% block content %}
+<div x-data="symbolManagement()" x-init="init()">
+    <!-- Header -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <div class="flex justify-between items-center">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900">Workflow Symbols</h2>
+                <p class="text-gray-600 mt-1">Manage symbols for automated trading workflows</p>
+            </div>
+            <button @click="showAddModal = true" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                <i class="fa fa-plus"></i>
+                Add Symbol
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-6">
+        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-blue-100 text-sm">Total Symbols</p>
+                    <p class="text-3xl font-bold" x-text="symbols.length">0</p>
+                </div>
+                <i class="fa fa-chart-line text-4xl text-blue-300"></i>
+            </div>
+        </div>
+        
+        <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-green-100 text-sm">Enabled</p>
+                    <p class="text-3xl font-bold" x-text="enabledCount">0</p>
+                </div>
+                <i class="fa fa-check-circle text-4xl text-green-300"></i>
+            </div>
+        </div>
+        
+        <div class="bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg shadow-lg p-6 text-white">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-gray-100 text-sm">Disabled</p>
+                    <p class="text-3xl font-bold" x-text="disabledCount">0</p>
+                </div>
+                <i class="fa fa-pause-circle text-4xl text-gray-300"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Symbols Table -->
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <!-- Loading State -->
+        <div x-show="loading" class="p-8 text-center">
+            <i class="fa fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+            <p class="text-gray-600">Loading symbols...</p>
+        </div>
+
+        <!-- Error State -->
+        <div x-show="error && !loading" class="p-8 text-center">
+            <i class="fa fa-exclamation-triangle text-4xl text-red-600 mb-4"></i>
+            <p class="text-red-600 mb-2">Failed to load symbols</p>
+            <p class="text-gray-600 text-sm" x-text="error"></p>
+            <button @click="loadSymbols()" class="mt-4 text-blue-600 hover:text-blue-700">
+                <i class="fa fa-refresh"></i> Retry
+            </button>
+        </div>
+
+        <!-- Table -->
+        <div x-show="!loading && !error">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Symbol
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Name
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Priority
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Workflow Type
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Status
+                        </th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <template x-for="symbol in symbols" :key="symbol.id">
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="text-sm font-bold text-gray-900" x-text="symbol.symbol"></div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-900" x-text="symbol.name || '-'"></div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-medium text-gray-900" x-text="symbol.priority"></span>
+                                    <div class="flex flex-col gap-1">
+                                        <button @click="changePriority(symbol, 1)" 
+                                                class="text-xs text-gray-400 hover:text-blue-600">
+                                            <i class="fa fa-chevron-up"></i>
+                                        </button>
+                                        <button @click="changePriority(symbol, -1)" 
+                                                class="text-xs text-gray-400 hover:text-blue-600">
+                                            <i class="fa fa-chevron-down"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="text-sm text-gray-600" x-text="symbol.workflow_type"></span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                      :class="symbol.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'"
+                                      x-text="symbol.enabled ? 'Enabled' : 'Disabled'">
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <div class="flex justify-end gap-2">
+                                    <!-- Toggle Enable/Disable -->
+                                    <button @click="toggleSymbol(symbol)" 
+                                            class="text-gray-600 hover:text-blue-600"
+                                            :title="symbol.enabled ? 'Disable' : 'Enable'">
+                                        <i :class="symbol.enabled ? 'fa fa-pause-circle' : 'fa fa-play-circle'"></i>
+                                    </button>
+                                    
+                                    <!-- Edit -->
+                                    <button @click="editSymbol(symbol)" 
+                                            class="text-gray-600 hover:text-blue-600"
+                                            title="Edit">
+                                        <i class="fa fa-edit"></i>
+                                    </button>
+                                    
+                                    <!-- Delete -->
+                                    <button @click="deleteSymbol(symbol)" 
+                                            class="text-gray-600 hover:text-red-600"
+                                            title="Delete">
+                                        <i class="fa fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    
+                    <!-- Empty State -->
+                    <tr x-show="symbols.length === 0">
+                        <td colspan="6" class="px-6 py-12 text-center">
+                            <i class="fa fa-inbox text-4xl text-gray-300 mb-4"></i>
+                            <p class="text-gray-500">No symbols configured</p>
+                            <button @click="showAddModal = true" 
+                                    class="mt-4 text-blue-600 hover:text-blue-700">
+                                <i class="fa fa-plus"></i> Add your first symbol
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div x-show="showAddModal" 
+         class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+         x-transition>
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-lg bg-white">
+            <div class="mb-4">
+                <h3 class="text-lg font-bold text-gray-900" x-text="editingSymbol ? 'Edit Symbol' : 'Add Symbol'"></h3>
+            </div>
+            
+            <form @submit.prevent="saveSymbol()">
+                <!-- Symbol -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Symbol *</label>
+                    <input type="text" 
+                           x-model="formData.symbol"
+                           :disabled="editingSymbol"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="TSLA"
+                           required
+                           pattern="[A-Z]{1,10}"
+                           title="1-10 uppercase letters"
+                           :class="editingSymbol ? 'bg-gray-100' : ''">
+                </div>
+                
+                <!-- Name -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Company Name</label>
+                    <input type="text" 
+                           x-model="formData.name"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="Tesla Inc.">
+                </div>
+                
+                <!-- Priority -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                    <input type="number" 
+                           x-model.number="formData.priority"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="0">
+                    <p class="text-xs text-gray-500 mt-1">Higher priority = processed first</p>
+                </div>
+                
+                <!-- Enabled -->
+                <div class="mb-4">
+                    <label class="flex items-center">
+                        <input type="checkbox" 
+                               x-model="formData.enabled"
+                               class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <span class="ml-2 text-sm text-gray-700">Enable in workflows</span>
+                    </label>
+                </div>
+                
+                <!-- Buttons -->
+                <div class="flex justify-end gap-2">
+                    <button type="button"
+                            @click="closeModal()"
+                            class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                            :disabled="saving">
+                        <span x-show="!saving" x-text="editingSymbol ? 'Update' : 'Add'"></span>
+                        <span x-show="saving">
+                            <i class="fa fa-spinner fa-spin"></i> Saving...
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function symbolManagement() {
+    return {
+        symbols: [],
+        loading: true,
+        error: null,
+        showAddModal: false,
+        editingSymbol: null,
+        saving: false,
+        formData: {
+            symbol: '',
+            name: '',
+            priority: 0,
+            enabled: true,
+            workflow_type: 'trading_signal'
+        },
+        
+        get enabledCount() {
+            return this.symbols.filter(s => s.enabled).length;
+        },
+        
+        get disabledCount() {
+            return this.symbols.filter(s => !s.enabled).length;
+        },
+        
+        async init() {
+            await this.loadSymbols();
+        },
+        
+        async loadSymbols() {
+            this.loading = true;
+            this.error = null;
+            try {
+                const response = await fetch('/api/workflow-symbols/');
+                if (!response.ok) throw new Error('Failed to fetch symbols');
+                this.symbols = await response.json();
+            } catch (err) {
+                this.error = err.message;
+                console.error('Error loading symbols:', err);
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        async toggleSymbol(symbol) {
+            try {
+                const response = await fetch(`/api/workflow-symbols/${symbol.symbol}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: !symbol.enabled })
+                });
+                
+                if (!response.ok) throw new Error('Failed to update symbol');
+                
+                await this.loadSymbols();
+                this.showNotification(
+                    `${symbol.symbol} ${symbol.enabled ? 'disabled' : 'enabled'}`,
+                    'success'
+                );
+            } catch (err) {
+                this.showNotification('Failed to update symbol', 'error');
+                console.error('Error toggling symbol:', err);
+            }
+        },
+        
+        async changePriority(symbol, delta) {
+            const newPriority = symbol.priority + delta;
+            try {
+                const response = await fetch(`/api/workflow-symbols/${symbol.symbol}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ priority: newPriority })
+                });
+                
+                if (!response.ok) throw new Error('Failed to update priority');
+                await this.loadSymbols();
+            } catch (err) {
+                this.showNotification('Failed to update priority', 'error');
+                console.error('Error changing priority:', err);
+            }
+        },
+        
+        editSymbol(symbol) {
+            this.editingSymbol = symbol;
+            this.formData = {
+                symbol: symbol.symbol,
+                name: symbol.name || '',
+                priority: symbol.priority,
+                enabled: symbol.enabled,
+                workflow_type: symbol.workflow_type
+            };
+            this.showAddModal = true;
+        },
+        
+        async deleteSymbol(symbol) {
+            if (!confirm(`Are you sure you want to delete ${symbol.symbol}?`)) return;
+            
+            try {
+                const response = await fetch(`/api/workflow-symbols/${symbol.symbol}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) throw new Error('Failed to delete symbol');
+                
+                await this.loadSymbols();
+                this.showNotification(`${symbol.symbol} deleted`, 'success');
+            } catch (err) {
+                this.showNotification('Failed to delete symbol', 'error');
+                console.error('Error deleting symbol:', err);
+            }
+        },
+        
+        async saveSymbol() {
+            this.saving = true;
+            try {
+                const url = this.editingSymbol 
+                    ? `/api/workflow-symbols/${this.editingSymbol.symbol}`
+                    : '/api/workflow-symbols/';
+                    
+                const method = this.editingSymbol ? 'PATCH' : 'POST';
+                
+                // For PATCH, only send changed fields
+                const body = this.editingSymbol 
+                    ? { 
+                        name: this.formData.name,
+                        priority: this.formData.priority,
+                        enabled: this.formData.enabled
+                      }
+                    : this.formData;
+                
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to save symbol');
+                }
+                
+                await this.loadSymbols();
+                this.closeModal();
+                this.showNotification(
+                    `Symbol ${this.editingSymbol ? 'updated' : 'added'} successfully`,
+                    'success'
+                );
+            } catch (err) {
+                this.showNotification(err.message, 'error');
+                console.error('Error saving symbol:', err);
+            } finally {
+                this.saving = false;
+            }
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.editingSymbol = null;
+            this.formData = {
+                symbol: '',
+                name: '',
+                priority: 0,
+                enabled: true,
+                workflow_type: 'trading_signal'
+            };
+        },
+        
+        showNotification(message, type) {
+            // You can implement a toast notification system here
+            // For now, just console.log
+            if (type === 'success') {
+                console.log('✅', message);
+            } else {
+                console.error('❌', message);
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

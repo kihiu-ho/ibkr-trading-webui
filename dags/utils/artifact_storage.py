@@ -39,6 +39,91 @@ def _convert_decimals(obj: Any) -> Any:
         return obj
 
 
+def update_artifact(
+    artifact_id: int,
+    updates: Dict[str, Any],
+    merge_metadata: bool = True
+) -> Optional[Dict[str, Any]]:
+    """
+    Update an existing artifact via API.
+    
+    Args:
+        artifact_id: Artifact ID to update
+        updates: Dict of fields to update
+        merge_metadata: If True, merge new metadata with existing metadata instead of replacing
+        
+    Returns:
+        Updated artifact dict or None if failed
+    """
+    try:
+        backend_url = os.getenv('BACKEND_API_URL', 'http://backend:8000')
+        
+        # If merging metadata, fetch existing artifact first
+        if merge_metadata and 'metadata' in updates:
+            try:
+                get_response = requests.get(f"{backend_url}/api/artifacts/{artifact_id}", timeout=5)
+                if get_response.status_code == 200:
+                    existing_artifact = get_response.json()
+                    existing_metadata = existing_artifact.get('metadata', {})
+                    
+                    # Merge new metadata with existing
+                    if existing_metadata:
+                        merged_metadata = {**existing_metadata, **updates['metadata']}
+                        updates['metadata'] = merged_metadata
+                        logger.debug(f"Merged metadata for artifact {artifact_id}")
+            except Exception as e:
+                logger.warning(f"Failed to fetch existing metadata for merge: {e}")
+                # Continue with update anyway
+        
+        api_url = f"{backend_url}/api/artifacts/{artifact_id}"
+        
+        # Convert Decimal values
+        if 'metadata' in updates:
+            updates['metadata'] = _convert_decimals(updates['metadata'])
+        if 'chart_data' in updates:
+            updates['chart_data'] = _convert_decimals(updates['chart_data'])
+        if 'signal_data' in updates:
+            updates['signal_data'] = _convert_decimals(updates['signal_data'])
+        
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = requests.patch(api_url, json=updates, timeout=10)
+                response.raise_for_status()
+                artifact = response.json()
+                logger.info(f"✅ Updated artifact: {artifact_id}")
+                return artifact
+            except requests.exceptions.RequestException as e:
+                if attempt < MAX_RETRIES - 1:
+                    delay = RETRY_DELAY * (RETRY_BACKOFF ** attempt)
+                    logger.warning(f"Retry {attempt + 1}/{MAX_RETRIES} updating artifact {artifact_id}: {e}")
+                    time.sleep(delay)
+                    continue
+                raise
+        
+        return None
+    except Exception as e:
+        logger.error(f"❌ Failed to update artifact {artifact_id}: {e}", exc_info=True)
+        return None
+
+
+def attach_artifact_lineage(
+    artifact_ids: list[int],
+    run_id: Optional[str],
+    experiment_id: Optional[str]
+) -> None:
+    """Attach MLflow lineage identifiers to stored artifacts."""
+    if not run_id:
+        return
+    lineage_updates = {'run_id': run_id}
+    if experiment_id:
+        lineage_updates['experiment_id'] = experiment_id
+    for artifact_id in [aid for aid in artifact_ids if aid]:
+        try:
+            update_artifact(artifact_id, lineage_updates, merge_metadata=False)
+        except Exception as exc:
+            logger.warning(f"Failed to tag artifact {artifact_id} with MLflow lineage: {exc}")
+
+
 def store_artifact(
     name: str,
     artifact_type: str,
@@ -477,4 +562,3 @@ def store_portfolio_artifact(
         signal_data={'artifact_type': 'portfolio', **portfolio_metadata},  # Mark as portfolio in signal_data
         metadata=portfolio_metadata
     )
-
