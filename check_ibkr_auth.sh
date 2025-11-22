@@ -27,10 +27,16 @@ echo ""
 
 # Check if gateway API is responding
 echo -e "${BLUE}2. Checking if Gateway API is responding...${NC}"
-TICKLE_RESPONSE=$(curl -k -s https://localhost:5055/tickle)
+TICKLE_RESPONSE=$(curl -k -s https://localhost:5055/v1/api/tickle)
 if [ -n "$TICKLE_RESPONSE" ]; then
     echo -e "   ${GREEN}✓ Gateway API is responding${NC}"
     echo -e "   Response: ${TICKLE_RESPONSE}"
+    if echo "$TICKLE_RESPONSE" | grep -qi "access denied"; then
+        echo ""
+        echo -e "   ${YELLOW}Access Denied means the gateway is up but not authenticated.${NC}"
+        echo "   Fix: Open https://localhost:5055 in your browser, accept the TLS warning,"
+        echo "        and complete the IBKR login. Then rerun this script."
+    fi
 else
     echo -e "   ${RED}✗ Gateway API is NOT responding${NC}"
     echo -e "   ${YELLOW}Fix: Wait 60 seconds for gateway to initialize${NC}"
@@ -40,7 +46,7 @@ echo ""
 
 # Check authentication status
 echo -e "${BLUE}3. Checking authentication status...${NC}"
-AUTH_RESPONSE=$(curl -k -s https://localhost:5055/iserver/auth/status)
+AUTH_RESPONSE=$(curl -k -s https://localhost:5055/v1/api/iserver/auth/status)
 
 # Handle "Access Denied" which means not authenticated
 if echo "$AUTH_RESPONSE" | grep -qi "access denied"; then
@@ -105,4 +111,3 @@ else
     echo "  docker logs ibkr-gateway --tail 20"
     exit 1
 fi
-

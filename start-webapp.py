@@ -47,7 +47,7 @@ class OptimizedStartup:
         self.services = {
             'redis': ServiceConfig('Redis', 'ibkr-redis', 'redis-cli ping', 15, True),
             'minio': ServiceConfig('MinIO', 'ibkr-minio', 'curl -f http://localhost:9000/minio/health/live', 20, True),
-            'ibkr-gateway': ServiceConfig('IBKR Gateway', 'ibkr-gateway', 'curl -k -f https://localhost:5055/tickle', 90, True),
+            'ibkr-gateway': ServiceConfig('IBKR Gateway', 'ibkr-gateway', 'curl -k -f https://localhost:5055/v1/api/tickle', 90, True),
             'backend': ServiceConfig('Backend', 'ibkr-backend', 'curl -f http://localhost:8000/health', 30, True, ['redis', 'minio']),
             'celery-worker': ServiceConfig('Celery Worker', 'ibkr-celery-worker', None, 20, True, ['redis']),
             'celery-beat': ServiceConfig('Celery Beat', 'ibkr-celery-beat', None, 15, True, ['redis']),

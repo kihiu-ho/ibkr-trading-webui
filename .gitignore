@@ -233,3 +233,9 @@ experiments/
 
 # Keep directory structure but ignore logs
 !reference/airflow/logs/.gitkeep
+*.ssh_key
+.env
+.env
+vultr_deploy_key
+vultr_deploy_key.pub
+.env

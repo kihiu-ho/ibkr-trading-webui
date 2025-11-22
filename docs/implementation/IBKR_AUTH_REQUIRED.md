@@ -191,6 +191,15 @@ curl -k https://localhost:5055/v1/api/iserver/auth/status
 curl http://localhost:8000/health
 ```
 
+### Interpreting the tickle response
+
+| `curl -k https://localhost:5055/v1/api/tickle` output | Meaning | What to do |
+| --- | --- | --- |
+| `Access Denied` | Gateway is running but you have **not authenticated yet**. | Open https://localhost:5055 in a browser, accept the TLS warning, complete the IBKR login (including 2FA), then rerun the command. |
+| `{ "status": "ok" }` (or another JSON payload) | Gateway is running **and** authenticated. | Proceed with backend/API tests. |
+
+> **Reminder:** The `check_ibkr_auth.sh` script now prints the same guidance—if it surfaces `Access Denied`, follow the steps above before assuming the gateway is broken.
+
 ## Next Steps
 
 1. **Authenticate**: Open https://localhost:5055 and log in
@@ -207,5 +216,4 @@ curl http://localhost:8000/health
 - ⏳ Chart Generation: Will work after authentication
 
 **Ready?** Open https://localhost:5055 and log in! 🚀
-
 

@@ -16,7 +16,7 @@ x-common-variables: &common-env
   REDIS_URL: "redis://redis:6379/0"
   CELERY_BROKER_URL: "redis://redis:6379/0"
   CELERY_RESULT_BACKEND: "redis://redis:6379/1"
-  IBKR_API_BASE_URL: "https://ibkr-gateway:5055/v1/api"
+  IBKR_API_BASE_URL: "https://ibkr-gateway:443/v1/api"
   IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
   IBKR_SSL_VERIFY: "false"
   MINIO_ENDPOINT: "minio:9000"
@@ -223,7 +223,7 @@ services:
     environment:
       IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
     ports:
-      - "5055:5055"  # IBKR Gateway API
+      - "5055:443"   # IBKR Gateway API (container listens on 443)
       - "5056:5056"  # IBKR Gateway Web Interface
     volumes:
       - ./conf.yaml:/app/gateway/root/conf.yaml:ro
@@ -240,7 +240,7 @@ services:
           memory: 512M
           cpus: '0.5'
     healthcheck:
-      test: ["CMD", "curl", "-k", "-f", "https://localhost:5055/v1/api/tickle"]
+      test: ["CMD", "curl", "-k", "-f", "https://localhost:443/v1/api/tickle"]
       interval: 30s
       timeout: 10s
       retries: 3

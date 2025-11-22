@@ -53,10 +53,10 @@ USER ibkr
 
 # Health check for faster startup detection
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -k -f https://localhost:5055/v1/api/tickle || exit 1
+    CMD curl -k -f https://localhost:443/v1/api/tickle || exit 1
 
 # Expose ports
-EXPOSE 5055 5056
+EXPOSE 443 5056
 
 # Use exec form for better signal handling
 CMD ["./start.sh"]

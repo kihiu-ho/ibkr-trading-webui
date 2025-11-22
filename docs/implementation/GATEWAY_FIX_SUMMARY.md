@@ -81,6 +81,13 @@ HTTP Code: 404/401
 
 This is the **correct** response! The gateway is running and waiting for authentication.
 
+**How to clear Access Denied**
+1. Open https://localhost:5055 in a browser (accept the self-signed certificate warning).
+2. Log in with your IBKR credentials and approve 2FA.
+3. Re-run `curl -k https://localhost:5055/v1/api/tickle`
+   - If it still prints `Access Denied`, wait 10 seconds and refresh the login page.
+   - Once the curl output switches to JSON (or `{ "status": "ok" }`), the gateway is authenticated.
+
 ### ✅ Ports Accessible
 - Port 5055 (API): https://localhost:5055
 - Port 5056 (UI): https://localhost:5056
@@ -300,4 +307,3 @@ The IBKR Gateway is now:
 
 **Date**: October 21, 2025
 **Status**: Production Ready ✅
-
