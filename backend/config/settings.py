@@ -101,7 +101,14 @@ class Settings(BaseSettings):
     DEFAULT_TIF: str = "DAY"
     DEFAULT_ORDER_TYPE: str = "LMT"
     WORKFLOW_DELAY_SECONDS: int = 60
-    
+
+    # Airflow
+    AIRFLOW_API_URL: str = "http://airflow-webserver:8080/api/v1"
+    AIRFLOW_USERNAME: str = "airflow"
+    AIRFLOW_PASSWORD: str = "airflow"
+    AIRFLOW_DEFAULT_DAG_ID: str = "ibkr_trading_strategy"
+    AIRFLOW_RUN_TIMEOUT_SECONDS: int = 30
+
     # Chart
     CHART_WIDTH: int = 1920
     CHART_HEIGHT: int = 1080

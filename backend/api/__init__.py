@@ -1,5 +1,4 @@
 """API routers."""
-from backend.api import health, orders, market_data, frontend
+from backend.api import frontend, health, market_data, orders, schedules
 
-__all__ = ['health', 'orders', 'market_data', 'frontend']
-
+__all__ = ['health', 'orders', 'market_data', 'frontend', 'schedules']

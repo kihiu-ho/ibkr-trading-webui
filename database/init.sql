@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS codes (
 CREATE TABLE IF NOT EXISTS strategies (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT,
     workflow_id INTEGER REFERENCES workflows(id) ON DELETE SET NULL,
     type VARCHAR(50),
     param JSON DEFAULT '{}',
@@ -44,6 +45,26 @@ CREATE TABLE IF NOT EXISTS strategy_codes (
     code_id INTEGER REFERENCES codes(id) ON DELETE CASCADE,
     PRIMARY KEY (strategy_id, code_id)
 );
+
+-- Strategy schedules table
+CREATE TABLE IF NOT EXISTS strategy_schedules (
+    id SERIAL PRIMARY KEY,
+    strategy_id INTEGER NOT NULL UNIQUE REFERENCES strategies(id) ON DELETE CASCADE,
+    workflow_id INTEGER REFERENCES workflows(id) ON DELETE SET NULL,
+    cron_expression VARCHAR(120) NOT NULL,
+    timezone VARCHAR(64) NOT NULL DEFAULT 'America/New_York',
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    description TEXT,
+    next_run_time TIMESTAMP WITH TIME ZONE,
+    last_run_time TIMESTAMP WITH TIME ZONE,
+    last_synced_at TIMESTAMP WITH TIME ZONE,
+    pending_airflow_sync BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_strategy_schedules_workflow ON strategy_schedules(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_strategy_schedules_enabled ON strategy_schedules(enabled) WHERE enabled = TRUE;
+CREATE INDEX IF NOT EXISTS idx_strategy_schedules_next_run ON strategy_schedules(next_run_time);
 
 -- Indicators table for technical indicator configurations
 CREATE TABLE IF NOT EXISTS indicators (
@@ -260,4 +281,3 @@ COMMENT ON TABLE positions IS 'Current portfolio positions';
 COMMENT ON TABLE workflow_executions IS 'Workflow execution history';
 COMMENT ON TABLE agent_conversations IS 'AutoGen agent conversation logs';
 COMMENT ON TABLE workflow_logs IS 'Comprehensive workflow step I/O logging';
-

@@ -40,6 +40,29 @@ cd /Users/he/git/ibkr-trading-webui
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+### 4. Configure Strategy Schedules (Optional but Recommended)
+
+Automated Airflow runs can now be managed from the UI:
+
+1. Navigate to `http://localhost:8000/schedules`.
+2. Click **New Schedule**, enter the strategy ID + workflow ID, and supply a cron expression (e.g., `0 9 * * 1-5`) plus a timezone (`America/New_York` by default).
+3. Enable the schedule to create/update the Airflow DAG. The change is reflected without restarting services.
+4. Use the **Run** button next to any schedule to request an immediate DagRun for manual verification.
+
+Equivalent API calls:
+
+```bash
+# Create 9:30 AM ET weekday run
+curl -X POST http://localhost:8000/api/workflows/1/schedule \
+  -H "Content-Type: application/json" \
+  -d '{"strategy_id": 1, "cron_expression": "30 9 * * 1-5", "timezone": "America/New_York"}'
+
+# Pause the cadence
+curl -X PUT http://localhost:8000/api/schedules/1 -H "Content-Type: application/json" -d '{"enabled": false}'
+```
+
+> **Note:** Keep exchange hours in mind; schedule outside of live trading windows only when testing after-hours behavior.
+
 You should see:
 ```
 INFO:     Application startup complete.
@@ -443,4 +466,3 @@ For issues or questions:
 **Happy Testing! 🚀**
 
 *Last Updated: 2025-10-19*
-

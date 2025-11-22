@@ -92,6 +92,11 @@ async def workflow_symbols(request: Request):
     """Workflow symbol management page."""
     return templates.TemplateResponse("workflow_symbols.html", {"request": request})
 
+@router.get("/schedules", response_class=HTMLResponse)
+async def schedules(request: Request):
+    """Strategy scheduler UI."""
+    return templates.TemplateResponse("workflows/schedules.html", {"request": request})
+
 
 @router.get("/ibkr/login", response_class=HTMLResponse)
 async def ibkr_login(request: Request):
@@ -123,4 +128,3 @@ async def orders(request: Request):
 async def portfolio(request: Request):
     """Portfolio and positions page."""
     return templates.TemplateResponse("portfolio.html", {"request": request})
-
