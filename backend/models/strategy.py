@@ -83,13 +83,8 @@ class Strategy(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    workflow = relationship("Workflow", back_populates="strategies")
     codes = relationship("Code", secondary=StrategyCode, back_populates="strategies", lazy="selectin")
-    schedule_entry = relationship(
-        "StrategySchedule",
-        back_populates="strategy",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
 
     # Provide both is_active and active attribute names for compatibility
     is_active = synonym("_is_active")
@@ -127,31 +122,3 @@ class Strategy(Base):
     def __repr__(self) -> str:  # pragma: no cover - debugging helper
         return f"<Strategy(id={self.id}, name={self.name}, active={self.is_active})>"
 
-
-class StrategySchedule(Base):
-    """Persistent schedule metadata per strategy."""
-
-    __tablename__ = "strategy_schedules"
-
-    id = Column(Integer, primary_key=True)
-    strategy_id = Column(Integer, ForeignKey("strategies.id", ondelete="CASCADE"), unique=True, nullable=False)
-    workflow_id = Column(Integer, nullable=True)
-    cron_expression = Column(String(120), nullable=False)
-    timezone = Column(String(64), nullable=False, default="America/New_York")
-    enabled = Column(Boolean, nullable=False, default=True)
-    description = Column(Text)
-    next_run_time = Column(DateTime(timezone=True))
-    last_run_time = Column(DateTime(timezone=True))
-    last_synced_at = Column(DateTime(timezone=True))
-    pending_airflow_sync = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-    strategy = relationship("Strategy", back_populates="schedule_entry")
-
-    @property
-    def strategy_dag_id(self) -> str:
-        return f"strategy_{self.strategy_id}_schedule"
-
-    def __repr__(self) -> str:  # pragma: no cover - debugging helper
-        return f"<StrategySchedule(strategy_id={self.strategy_id}, cron='{self.cron_expression}', enabled={self.enabled})>"

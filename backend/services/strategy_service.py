@@ -1,4 +1,4 @@
-"""Business logic for managing strategies and schedules."""
+"""Business logic for managing strategies."""
 from __future__ import annotations
 
 import logging
@@ -9,7 +9,7 @@ from croniter import croniter
 from pytz import timezone as pytz_timezone, UnknownTimeZoneError
 from sqlalchemy.orm import Session
 
-from backend.models.strategy import Strategy, StrategySchedule
+from backend.models.strategy import Strategy
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +61,7 @@ class StrategyService:
         strategy = self._require_strategy(strategy_id)
         strategy.is_active = True
         if strategy.schedule:
-            tz_name = strategy.schedule_entry.timezone if strategy.schedule_entry else DEFAULT_SCHEDULE_TZ
-            strategy.next_execution_at = self._calculate_next_execution(strategy.schedule, tz_name=tz_name)
+            strategy.next_execution_at = self._calculate_next_execution(strategy.schedule, tz_name=DEFAULT_SCHEDULE_TZ)
         self.db.commit()
         self.db.refresh(strategy)
         return strategy
@@ -82,137 +81,14 @@ class StrategyService:
         now = self._now()
         strategy.last_executed_at = now
         if strategy.schedule and self._validate_cron(strategy.schedule):
-            tz_name = strategy.schedule_entry.timezone if strategy.schedule_entry else DEFAULT_SCHEDULE_TZ
-            strategy.next_execution_at = self._calculate_next_execution(strategy.schedule, start_time=now, tz_name=tz_name)
-            if strategy.schedule_entry:
-                strategy.schedule_entry.last_run_time = now
-                strategy.schedule_entry.next_run_time = strategy.next_execution_at
+            strategy.next_execution_at = self._calculate_next_execution(
+                strategy.schedule,
+                start_time=now,
+                tz_name=DEFAULT_SCHEDULE_TZ,
+            )
         self.db.commit()
         self.db.refresh(strategy)
         return strategy
-
-    # ------------------------------------------------------------------
-    # Schedule CRUD helpers
-    # ------------------------------------------------------------------
-    def list_schedules(
-        self,
-        *,
-        strategy_id: Optional[int] = None,
-        workflow_id: Optional[int] = None,
-        enabled: Optional[bool] = None,
-    ) -> List[StrategySchedule]:
-        query = self.db.query(StrategySchedule)
-        if strategy_id:
-            query = query.filter(StrategySchedule.strategy_id == strategy_id)
-        if workflow_id:
-            query = query.filter(StrategySchedule.workflow_id == workflow_id)
-        if enabled is not None:
-            query = query.filter(StrategySchedule.enabled.is_(enabled))
-        return query.order_by(StrategySchedule.strategy_id.asc()).all()
-
-    def get_schedule_by_id(self, schedule_id: int) -> Optional[StrategySchedule]:
-        return self.db.query(StrategySchedule).filter(StrategySchedule.id == schedule_id).first()
-
-    def create_schedule(
-        self,
-        *,
-        strategy_id: int,
-        cron_expression: str,
-        timezone_name: str = DEFAULT_SCHEDULE_TZ,
-        enabled: bool = True,
-        description: Optional[str] = None,
-    ) -> StrategySchedule:
-        strategy = self._require_strategy(strategy_id)
-        if strategy.schedule_entry:
-            raise ValueError("Strategy already has a schedule")
-        self._ensure_valid_cron(cron_expression)
-        tz = self._normalize_timezone(timezone_name)
-        next_run = self._calculate_next_execution(cron_expression, tz_name=tz)
-
-        schedule_entry = StrategySchedule(
-            strategy_id=strategy.id,
-            workflow_id=strategy.workflow_id,
-            cron_expression=cron_expression,
-            timezone=tz,
-            enabled=enabled,
-            description=description,
-            next_run_time=next_run if enabled else None,
-            pending_airflow_sync=True,
-        )
-        self.db.add(schedule_entry)
-        strategy.schedule = cron_expression
-        strategy.next_execution_at = next_run if enabled else None
-        self.db.commit()
-        self.db.refresh(schedule_entry)
-        self.db.refresh(strategy)
-        return schedule_entry
-
-    def update_schedule(
-        self,
-        schedule_id: int,
-        *,
-        cron_expression: Optional[str] = None,
-        timezone_name: Optional[str] = None,
-        enabled: Optional[bool] = None,
-        description: Optional[str] = None,
-    ) -> StrategySchedule:
-        schedule = self._require_schedule(schedule_id)
-        changed = False
-
-        if cron_expression is not None and cron_expression != schedule.cron_expression:
-            self._ensure_valid_cron(cron_expression)
-            schedule.cron_expression = cron_expression
-            changed = True
-
-        if timezone_name:
-            schedule.timezone = self._normalize_timezone(timezone_name)
-            changed = True
-
-        if description is not None:
-            schedule.description = description
-
-        if enabled is not None and enabled != schedule.enabled:
-            schedule.enabled = enabled
-            changed = True
-
-        if changed:
-            next_run = None
-            if schedule.enabled:
-                next_run = self._calculate_next_execution(
-                    schedule.cron_expression,
-                    tz_name=schedule.timezone,
-                )
-            schedule.next_run_time = next_run
-            schedule.pending_airflow_sync = True
-            strategy = schedule.strategy
-            if strategy:
-                strategy.schedule = schedule.cron_expression
-                strategy.next_execution_at = next_run
-
-        self.db.commit()
-        self.db.refresh(schedule)
-        return schedule
-
-    def delete_schedule(self, schedule_id: int) -> None:
-        schedule = self._require_schedule(schedule_id)
-        strategy = schedule.strategy
-        self.db.delete(schedule)
-        if strategy:
-            strategy.schedule = None
-            strategy.next_execution_at = None
-        self.db.commit()
-
-    def mark_schedule_synced(self, schedule_id: int) -> StrategySchedule:
-        schedule = self._require_schedule(schedule_id)
-        schedule.pending_airflow_sync = False
-        schedule.last_synced_at = self._now()
-        self.db.commit()
-        self.db.refresh(schedule)
-        return schedule
-
-    # ------------------------------------------------------------------
-    # Scheduling helpers
-    # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
     # Scheduling helpers
@@ -325,12 +201,6 @@ class StrategyService:
         if not strategy:
             raise ValueError(f"Strategy {strategy_id} not found")
         return strategy
-
-    def _require_schedule(self, schedule_id: int) -> StrategySchedule:
-        schedule = self.db.query(StrategySchedule).filter(StrategySchedule.id == schedule_id).first()
-        if not schedule:
-            raise ValueError(f"Schedule {schedule_id} not found")
-        return schedule
 
     @staticmethod
     def _normalize_timezone(tz_name: str) -> str:

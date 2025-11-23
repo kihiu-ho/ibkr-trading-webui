@@ -1,12 +1,12 @@
 """Tests for StrategyService."""
-from datetime import datetime, timezone
+from datetime import datetime, timezone as tz
 
 import pytest
 from sqlalchemy import Column, Integer, String, Table, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.core.database import Base
-from backend.models.strategy import Code, Strategy, StrategyCode, StrategySchedule
+from backend.models.strategy import Code, Strategy, StrategyCode
 from backend.services.strategy_service import StrategyService
 
 if "workflows" not in Base.metadata.tables:
@@ -21,7 +21,6 @@ if "workflows" not in Base.metadata.tables:
 
 @pytest.fixture(scope="function")
 def db_session() -> Session:
-    """Provide SQLite session with required tables."""
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     Base.metadata.create_all(
         bind=engine,
@@ -30,7 +29,6 @@ def db_session() -> Session:
             Code.__table__,
             StrategyCode,
             Strategy.__table__,
-            StrategySchedule.__table__,
         ],
     )
     with engine.begin() as conn:
@@ -74,80 +72,33 @@ def test_create_strategy(strategy_service: StrategyService):
 
 def test_create_strategy_with_invalid_cron(strategy_service: StrategyService):
     with pytest.raises(ValueError):
-        strategy_service.create_strategy(
-            name="Bad Cron",
-            workflow_id=1,
-            schedule="invalid",
-        )
-
-
-def test_get_and_list_strategies(strategy_service: StrategyService, sample_strategy: Strategy):
-    result = strategy_service.get_strategy(sample_strategy.id)
-    assert result is not None
-
-    strategies = strategy_service.list_strategies(active_only=True)
-    assert any(s.id == sample_strategy.id for s in strategies)
+        strategy_service.create_strategy(name="Bad Cron", workflow_id=1, schedule="invalid")
 
 
 def test_activate_deactivate_strategy(strategy_service: StrategyService, sample_strategy: Strategy):
     sample_strategy.schedule = "0 9 * * *"
     strategy_service.deactivate_strategy(sample_strategy.id)
     refreshed = strategy_service.get_strategy(sample_strategy.id)
-    assert refreshed.is_active is False
+    assert not refreshed.is_active
     assert refreshed.next_execution_at is None
 
     strategy_service.activate_strategy(sample_strategy.id)
     refreshed = strategy_service.get_strategy(sample_strategy.id)
-    assert refreshed.is_active is True
+    assert refreshed.is_active
     assert refreshed.next_execution_at is not None
 
 
 def test_get_strategies_due_for_execution(strategy_service: StrategyService, sample_strategy: Strategy):
     sample_strategy.schedule = "*/5 * * * *"
-    sample_strategy.next_execution_at = datetime.now(timezone.utc)
+    sample_strategy.next_execution_at = datetime.now(tz.utc)
     strategy_service.db.commit()
 
     due = strategy_service.get_strategies_due_for_execution(tolerance_minutes=1)
     assert any(s.id == sample_strategy.id for s in due)
 
 
-def test_schedule_crud(strategy_service: StrategyService, sample_strategy: Strategy):
-    schedule = strategy_service.create_schedule(
-        strategy_id=sample_strategy.id,
-        cron_expression="0 10 * * 1-5",
-        timezone_name="America/New_York",
-        description="Weekday open",
-    )
-    assert schedule.id is not None
-    assert schedule.enabled is True
-    assert schedule.next_run_time is not None
-
-    preview = strategy_service.preview_next_runs(schedule.cron_expression, timezone_name="America/New_York", count=3)
-    assert len(preview) == 3
-
-    updated = strategy_service.update_schedule(
-        schedule.id,
-        cron_expression="0 11 * * 1-5",
-        enabled=False,
-        description="Late open",
-    )
-    assert updated.cron_expression == "0 11 * * 1-5"
-    assert updated.enabled is False
-    assert updated.next_run_time is None
-
-    strategy_service.delete_schedule(schedule.id)
-    assert strategy_service.list_schedules(strategy_id=sample_strategy.id) == []
-
-
-def test_mark_strategy_executed(strategy_service: StrategyService, sample_strategy: Strategy):
-    sample_strategy.schedule = "0 9 * * *"
-    schedule = StrategySchedule(
-        strategy_id=sample_strategy.id,
-        cron_expression="0 9 * * *",
-        timezone="UTC",
-        enabled=True,
-    )
-    strategy_service.db.add(schedule)
+def test_mark_strategy_executed_updates_next_run(strategy_service: StrategyService, sample_strategy: Strategy):
+    sample_strategy.schedule = "*/15 * * * *"
     strategy_service.db.commit()
 
     result = strategy_service.mark_strategy_executed(sample_strategy.id)
@@ -161,3 +112,4 @@ def test_validate_strategy_config(strategy_service: StrategyService, sample_stra
     result = strategy_service.validate_strategy_config(sample_strategy)
     assert result["valid"] is False
     assert "Invalid cron expression" in result["issues"]
+    assert "No symbols associated with strategy" in result["warnings"]

@@ -1,7 +1,7 @@
 """Database models."""
 from backend.core.database import Base
 from backend.models.market import MarketData
-from backend.models.strategy import Code, Strategy, StrategyCode, StrategySchedule
+from backend.models.strategy import Code, Strategy, StrategyCode
 # from backend.models.market_data_cache import MarketDataCache  # Temporarily disabled to debug SQLAlchemy issue
 from backend.models.order import Order
 from backend.models.trade import Trade
@@ -14,6 +14,7 @@ from backend.models.chart import Chart
 from backend.models.llm_analysis import LLMAnalysis
 from backend.models.artifact import Artifact
 from backend.models.workflow_symbol import WorkflowSymbol
+from backend.models.workflow import Workflow
 
 __all__ = [
     "Base",
@@ -21,7 +22,6 @@ __all__ = [
     "Strategy",
     "Code",
     "StrategyCode",
-    "StrategySchedule",
     # "MarketDataCache",  # Temporarily disabled
     "Order",
     "Trade",
@@ -36,4 +36,5 @@ __all__ = [
     "LLMAnalysis",
     "Artifact",
     "WorkflowSymbol",
+    "Workflow",
 ]

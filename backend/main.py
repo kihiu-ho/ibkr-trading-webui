@@ -1,13 +1,33 @@
 """Main FastAPI application."""
+import logging
+import os
+
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from backend.api import health, orders, market_data, market_data_cache, frontend, dashboard, ibkr_auth, indicators, positions, charts, llm_analyses, artifacts, chart_images, workflow_symbols, schedules
+from fastapi.staticfiles import StaticFiles
+
+from backend.api import (
+    artifacts,
+    chart_images,
+    charts,
+    dashboard,
+    frontend,
+    health,
+    ibkr_auth,
+    indicators,
+    llm_analyses,
+    market_data,
+    market_data_cache,
+    orders,
+    positions,
+    strategies,
+    workflow_symbols,
+    workflows,
+)
 from backend.app.routes import airflow_proxy, mlflow_proxy
 from backend.core.database import engine, get_db
 from backend.models import Base
-import logging
-import os
+from backend.models.workflow_symbol import ensure_workflow_symbol_schema
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,7 +65,8 @@ app.include_router(llm_analyses.router, prefix="/api", tags=["llm-analyses"])
 app.include_router(artifacts.router, prefix="/api/artifacts", tags=["artifacts"])
 app.include_router(chart_images.router, prefix="/api/artifacts", tags=["artifacts"])
 app.include_router(workflow_symbols.router, tags=["workflow-symbols"])
-app.include_router(schedules.router)
+app.include_router(workflows.router)
+app.include_router(strategies.router)
 
 # Frontend routes
 app.include_router(frontend.router, tags=["frontend"])
@@ -81,6 +102,11 @@ async def startup():
             logger.info("Table creation attempt completed")
         except Exception as fallback_err:
             logger.error(f"Fallback table creation also failed: {fallback_err}")
+    finally:
+        try:
+            ensure_workflow_symbol_schema(engine)
+        except Exception as schema_err:
+            logger.warning("Failed to ensure workflow_symbols schema: %s", schema_err)
     
     logger.info("Application started successfully")
 
