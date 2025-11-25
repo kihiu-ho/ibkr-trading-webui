@@ -182,6 +182,48 @@ else
     DB_URL_MASKED=$(echo "$DATABASE_URL" | sed -E 's|(://[^:]+:)[^@]+(@)|\1****\2|')
     print_status "DATABASE_URL loaded: $DB_URL_MASKED"
     print_info "Airflow and MLflow use local PostgreSQL (configured automatically)"
+
+    # Ensure IBKR Client Portal config propagates into Airflow containers.
+    if [ -z "${IBKR_API_BASE_URL:-}" ]; then
+        export IBKR_API_BASE_URL="https://127.0.0.1:5055/v1/api"
+        print_info "IBKR_API_BASE_URL not set; defaulting to ${IBKR_API_BASE_URL}"
+    else
+        print_status "IBKR_API_BASE_URL detected: ${IBKR_API_BASE_URL}"
+    fi
+    if [ -z "${IBKR_API_BASE_URL_INTERNAL:-}" ]; then
+        export IBKR_API_BASE_URL_INTERNAL="https://ibkr-gateway:443/v1/api"
+        print_info "IBKR_API_BASE_URL_INTERNAL not set; defaulting to ${IBKR_API_BASE_URL_INTERNAL}"
+    else
+        print_status "IBKR_API_BASE_URL_INTERNAL detected: ${IBKR_API_BASE_URL_INTERNAL}"
+    fi
+
+    if [ -z "${IBKR_PRIMARY_CONID:-}" ]; then
+        PYTHON_BIN=""
+        if [ -x "$PROJECT_ROOT/venv/bin/python" ]; then
+            PYTHON_BIN="$PROJECT_ROOT/venv/bin/python"
+        elif command -v python3 >/dev/null 2>&1; then
+            PYTHON_BIN="$(command -v python3)"
+        fi
+
+        if [ -n "$PYTHON_BIN" ] && [ -x "$PYTHON_BIN" ]; then
+            if CONID="$("$PYTHON_BIN" "${PROJECT_ROOT}/scripts/export_primary_conid.py" 2>/dev/null)"; then
+                if [[ "$CONID" =~ ^[0-9]+$ ]]; then
+                    export IBKR_PRIMARY_CONID="$CONID"
+                    print_status "Resolved IBKR_PRIMARY_CONID=${IBKR_PRIMARY_CONID} from database"
+                elif [ -n "$CONID" ]; then
+                    print_info "IBKR primary CONID resolver returned unexpected value: ${CONID}"
+                else
+                    print_info "IBKR primary CONID resolver returned no data (symbol missing in DB)."
+                fi
+            else
+                print_info "Unable to auto-resolve IBKR_PRIMARY_CONID (database unreachable)."
+            fi
+        else
+            print_info "Python with psycopg2 not available; skipping IBKR_PRIMARY_CONID auto-detection."
+        fi
+    else
+        print_status "IBKR_PRIMARY_CONID preset: ${IBKR_PRIMARY_CONID}"
+    fi
 fi
 
 # Wait for Docker daemon to be ready

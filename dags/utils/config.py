@@ -61,6 +61,13 @@ class WorkflowConfig:
         # Vector memory (Weaviate)
         self.weaviate_url = os.getenv('WEAVIATE_URL', '').strip()
         self.weaviate_api_key = os.getenv('WEAVIATE_API_KEY', '').strip()
+
+        # IBKR Client Portal REST API configuration (live market data snapshots)
+        api_internal = os.getenv('IBKR_API_BASE_URL_INTERNAL', '')
+        self.ibkr_api_base_url = (api_internal or os.getenv('IBKR_API_BASE_URL', '') or '').strip().rstrip('/')
+        self.ibkr_api_verify_ssl = self._parse_bool_env(os.getenv('IBKR_API_VERIFY_SSL'), default=False)
+        self.ibkr_api_timeout = self._parse_int(os.getenv('IBKR_API_TIMEOUT', '15'), default=15)
+        self.ibkr_primary_conid = self._parse_optional_int(os.getenv('IBKR_PRIMARY_CONID'))
     
     @staticmethod
     def _parse_stock_symbols(symbols_str: str) -> List[str]:
@@ -110,6 +117,10 @@ class WorkflowConfig:
             'ibkr_strict_mode': str(self.ibkr_strict_mode),
             'ibkr_host': self.ibkr_host,
             'ibkr_port': str(self.ibkr_port),
+            'ibkr_api_base_url': self.ibkr_api_base_url,
+            'ibkr_api_verify_ssl': str(self.ibkr_api_verify_ssl),
+            'ibkr_api_timeout': str(self.ibkr_api_timeout),
+            'ibkr_primary_conid': str(self.ibkr_primary_conid or ''),
             'finagent_enabled': str(self.finagent_enabled),
             'finagent_reflection_rounds': self.finagent_reflection_rounds,
             'has_weaviate': str(bool(self.weaviate_url)),
@@ -163,6 +174,18 @@ class WorkflowConfig:
             return int(value)
         except (TypeError, ValueError):
             return default
+
+    @staticmethod
+    def _parse_optional_int(value: Optional[str]) -> Optional[int]:
+        if value is None:
+            return None
+        value_str = value.strip()
+        if not value_str:
+            return None
+        try:
+            return int(value_str)
+        except ValueError:
+            return None
 
     @staticmethod
     def _parse_bool_env(value: Optional[str], default: bool = False) -> bool:

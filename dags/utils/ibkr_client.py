@@ -22,6 +22,7 @@ from models.order import Order, OrderType, OrderSide, OrderStatus
 from models.trade import Trade, TradeExecution
 from models.portfolio import Portfolio, Position
 from utils.config import config as workflow_config
+from utils.ibkr_marketdata_api import IBKRMarketDataAPI
 
 logger = logging.getLogger(__name__)
 DEFAULT_STRICT_MODE = getattr(workflow_config, 'ibkr_strict_mode', False) if workflow_config else False
@@ -60,13 +61,29 @@ class IBKRClient:
             'ib_insync_version': IB_VERSION,
         }
         
+        # Initialize REST client
+        self.rest_client = IBKRMarketDataAPI(
+            base_url=workflow_config.ibkr_api_base_url,
+            verify_ssl=workflow_config.ibkr_api_verify_ssl,
+            timeout=workflow_config.ibkr_api_timeout
+        )
+        
         if not IB_AVAILABLE:
-            logger.warning("Running in MOCK mode - ib_insync not available")
+            if self.rest_client.is_configured():
+                logger.info("ib_insync not available - using IBKR REST API")
+            else:
+                logger.warning("Running in MOCK mode - ib_insync not available and REST API not configured")
     
     def connect(self):
         """Connect to IBKR Gateway"""
         self._ensure_dependency_available()
         if not IB_AVAILABLE:
+            if self.rest_client.is_configured():
+                logger.info("Using IBKR REST API (ib_insync missing)")
+                self.connected = True
+                self.runtime_metadata['connection_mode'] = 'rest'
+                return
+                
             logger.info("MOCK: Simulating IBKR connection (ib_insync missing)")
             self.connected = True
             self.runtime_metadata['connection_mode'] = 'mock'
@@ -122,6 +139,10 @@ class IBKRClient:
             self.connect()
         
         if not IB_AVAILABLE or self.ib is None:
+            # Try REST API first
+            if self.rest_client.is_configured():
+                return self._fetch_via_rest(symbol, duration, bar_size)
+                
             # Mock data for testing
             return self._mock_market_data(symbol, exchange)
         
@@ -169,6 +190,98 @@ class IBKRClient:
             logger.error(f"Failed to fetch market data for {symbol}: {e}")
             raise
     
+    def _fetch_via_rest(self, symbol: str, duration: str, bar_size: str) -> MarketData:
+        """Fetch market data via REST API"""
+        logger.info(f"Fetching market data for {symbol} via REST API")
+        
+        try:
+            # Resolve conid
+            conid = self.rest_client.resolve_conid(symbol, preferred_conid=workflow_config.ibkr_primary_conid)
+            if not conid:
+                raise ValueError(f"Could not resolve conid for {symbol}")
+            
+            # Convert parameters
+            period = self._convert_duration_to_period(duration)
+            bar = self._convert_bar_size_to_bar(bar_size)
+            
+            # Fetch data
+            response = self.rest_client.fetch_historical_bars(
+                conid=conid,
+                period=period,
+                bar=bar
+            )
+            
+            # Parse response
+            return self._parse_rest_response(symbol, response, bar_size)
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch market data via REST: {e}")
+            if self.strict_mode:
+                raise
+            logger.warning("Falling back to MOCK data due to REST failure")
+            return self._mock_market_data(symbol, "SMART")
+
+    def _convert_duration_to_period(self, duration: str) -> str:
+        """Convert '200 D' to '1y' etc"""
+        # Simple mapping for now
+        d = duration.lower().replace(' ', '')
+        if 'd' in d:
+            days = int(''.join(filter(str.isdigit, d)))
+            if days <= 1: return '1d'
+            if days <= 7: return '1w'
+            if days <= 30: return '1m'
+            if days <= 180: return '6m'
+            if days <= 365: return '1y'
+            return '5y'
+        if 'y' in d:
+            return d
+        return '1y'
+
+    def _convert_bar_size_to_bar(self, bar_size: str) -> str:
+        """Convert '1 day' to '1d' etc"""
+        b = bar_size.lower().replace(' ', '')
+        if 'day' in b or 'd' in b:
+            return '1d'
+        if 'hour' in b or 'h' in b:
+            return '1h'
+        if 'min' in b or 'm' in b:
+            return '5min' # Default to 5min for minutes
+        return '1d'
+
+    def _parse_rest_response(self, symbol: str, response: dict, bar_size: str) -> MarketData:
+        """Parse REST API response to MarketData"""
+        bars = []
+        data = response.get('data', []) or response.get('bars', [])
+        
+        for entry in data:
+            try:
+                # Timestamp is in ms
+                ts = datetime.utcfromtimestamp(int(entry['t']) / 1000)
+                
+                bar = OHLCVBar(
+                    timestamp=ts,
+                    open=Decimal(str(entry['o'])),
+                    high=Decimal(str(entry['h'])),
+                    low=Decimal(str(entry['l'])),
+                    close=Decimal(str(entry['c'])),
+                    volume=int(float(entry.get('v', 0)))
+                )
+                bars.append(bar)
+            except (KeyError, ValueError, TypeError) as e:
+                logger.warning(f"Skipping malformed bar: {entry} ({e})")
+                continue
+        
+        if not bars:
+            raise ValueError("No valid bars returned from REST API")
+            
+        return MarketData(
+            symbol=symbol,
+            exchange="SMART",
+            bars=bars,
+            timeframe=bar_size,
+            fetched_at=datetime.utcnow()
+        )
+    
     def _mock_market_data(self, symbol: str, exchange: str) -> MarketData:
         """Generate mock market data for testing"""
         logger.info(f"MOCK: Generating market data for {symbol}")
@@ -214,6 +327,8 @@ class IBKRClient:
             self.connect()
         
         if not IB_AVAILABLE or self.ib is None:
+            if self.rest_client.is_configured():
+                return self._place_order_via_rest(order)
             return self._mock_place_order(order)
         
         try:
@@ -251,6 +366,58 @@ class IBKRClient:
             order.status = OrderStatus.REJECTED
             raise
     
+    def _place_order_via_rest(self, order: Order) -> Order:
+        """Place order via REST API"""
+        try:
+            # Get account ID
+            account_id = self._get_account_id()
+            
+            # Resolve conid
+            conid = self.rest_client.resolve_conid(order.symbol, preferred_conid=workflow_config.ibkr_primary_conid)
+            if not conid:
+                raise ValueError(f"Could not resolve conid for {order.symbol}")
+            
+            # Construct payload
+            order_payload = {
+                "conid": conid,
+                "orderType": order.order_type.value,
+                "side": order.side.value,
+                "quantity": float(order.quantity),
+                "tif": "DAY",
+                "outsideRTH": True
+            }
+            
+            if order.order_type == OrderType.LIMIT:
+                if not order.limit_price:
+                    raise ValueError("Limit price required for LIMIT order")
+                order_payload["price"] = float(order.limit_price)
+            
+            # Place order
+            response = self.rest_client.place_order(account_id, order_payload)
+            
+            # Parse response (list of order status dicts)
+            if response and isinstance(response, list):
+                order_status = response[0]
+                order.order_id = str(order_status.get("order_id") or order_status.get("id"))
+                order.status = OrderStatus.SUBMITTED
+                order.submitted_at = datetime.utcnow()
+                logger.info(f"Placed REST order {order.order_id} for {order.symbol}")
+                return order
+            
+            raise RuntimeError(f"Unexpected REST response: {response}")
+            
+        except Exception as e:
+            logger.error(f"Failed to place REST order: {e}")
+            order.status = OrderStatus.REJECTED
+            raise
+
+    def _get_account_id(self) -> str:
+        """Helper to get first available account ID"""
+        accounts = self.rest_client.get_accounts()
+        if not accounts:
+            raise RuntimeError("No accounts found via REST API")
+        return accounts[0].get("id") or accounts[0].get("accountId")
+    
     def _mock_place_order(self, order: Order) -> Order:
         """Mock order placement"""
         logger.info(f"MOCK: Placing {order.side} order for {order.quantity} {order.symbol}")
@@ -275,6 +442,8 @@ class IBKRClient:
             self.connect()
         
         if not IB_AVAILABLE or self.ib is None:
+            if self.rest_client.is_configured():
+                return self._get_trades_via_rest(order_id)
             return self._mock_get_trades(order_id)
         
         try:
@@ -322,6 +491,58 @@ class IBKRClient:
         except Exception as e:
             logger.error(f"Failed to get trades for order {order_id}: {e}")
             return []
+
+    def _get_trades_via_rest(self, order_id: str) -> List[Trade]:
+        """Get trades via REST API (approximated from orders)"""
+        try:
+            orders = self.rest_client.get_orders()
+            target_order = next((o for o in orders if str(o.get("orderId")) == order_id), None)
+            
+            if not target_order:
+                return []
+            
+            # Check if filled
+            status = target_order.get("status")
+            if status != "Filled":
+                return []
+            
+            # Create synthetic trade execution
+            # REST API orders endpoint doesn't give full execution details per fill, 
+            # so we approximate from the order status
+            filled_qty = Decimal(str(target_order.get("filledQuantity", 0)))
+            avg_price = Decimal(str(target_order.get("avgPrice", 0)))
+            
+            if filled_qty == 0:
+                return []
+                
+            execution = TradeExecution(
+                execution_id=f"EXEC_{order_id}",
+                order_id=order_id,
+                symbol=target_order.get("symbol", ""),
+                side=target_order.get("side", ""),
+                quantity=float(filled_qty),
+                price=avg_price,
+                commission=Decimal("0"), # Commission not always available in order status
+                executed_at=datetime.utcnow() # Timestamp not always available
+            )
+            
+            trade = Trade(
+                order_id=order_id,
+                symbol=target_order.get("symbol", ""),
+                side=target_order.get("side", ""),
+                total_quantity=float(filled_qty),
+                average_price=avg_price,
+                total_commission=Decimal("0"),
+                executions=[execution],
+                first_execution_at=datetime.utcnow(),
+                last_execution_at=datetime.utcnow()
+            )
+            
+            return [trade]
+            
+        except Exception as e:
+            logger.error(f"Failed to get trades via REST: {e}")
+            return []
     
     def _mock_get_trades(self, order_id: str) -> List[Trade]:
         """Mock trade retrieval"""
@@ -366,6 +587,8 @@ class IBKRClient:
             self.connect()
         
         if not IB_AVAILABLE or self.ib is None:
+            if self.rest_client.is_configured():
+                return self._get_portfolio_via_rest(account_id)
             return self._mock_get_portfolio(account_id or "DU123456")
         
         try:
@@ -424,6 +647,57 @@ class IBKRClient:
         
         except Exception as e:
             logger.error(f"Failed to get portfolio: {e}")
+            raise
+
+    def _get_portfolio_via_rest(self, account_id: Optional[str]) -> Portfolio:
+        """Get portfolio via REST API"""
+        try:
+            target_account = account_id or self._get_account_id()
+            
+            # Get summary
+            summary = self.rest_client.get_portfolio_summary(target_account)
+            # Get positions
+            positions_data = self.rest_client.get_portfolio_positions(target_account)
+            
+            # Parse positions
+            positions = []
+            for pos in positions_data:
+                try:
+                    p = Position(
+                        symbol=pos.get("contractDesc") or pos.get("symbol"),
+                        quantity=int(float(pos.get("position", 0))),
+                        average_cost=Decimal(str(pos.get("avgCost", 0))),
+                        current_price=Decimal(str(pos.get("mktPrice", 0))),
+                        market_value=Decimal(str(pos.get("mktValue", 0))),
+                        unrealized_pnl=Decimal(str(pos.get("unrealizedPnl", 0))),
+                        unrealized_pnl_percent=Decimal("0") # Not directly provided
+                    )
+                    positions.append(p)
+                except Exception as e:
+                    logger.warning(f"Skipping malformed position: {e}")
+                    continue
+            
+            # Parse summary (simplified)
+            # REST API summary structure varies, we'll try to extract key fields
+            total_cash = Decimal("0")
+            net_liquidation = Decimal("0")
+            
+            if isinstance(summary, dict):
+                # This depends on the specific endpoint response structure
+                # Often it's a list of keys/values or a dict
+                pass 
+                
+            return Portfolio(
+                account_id=target_account,
+                positions=positions,
+                cash_balance=total_cash,
+                total_market_value=sum(p.market_value for p in positions),
+                total_value=net_liquidation,
+                total_unrealized_pnl=sum(p.unrealized_pnl for p in positions)
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to get portfolio via REST: {e}")
             raise
     
     def _mock_get_portfolio(self, account_id: str) -> Portfolio:

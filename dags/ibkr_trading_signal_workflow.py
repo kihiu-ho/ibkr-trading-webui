@@ -10,7 +10,7 @@ from airflow.operators.python import PythonOperator
 import logging
 import os
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 
 # Import models
 from models.market_data import MarketData, OHLCVBar
@@ -24,6 +24,11 @@ from models.portfolio import Portfolio, Position
 # Import utilities
 from utils.config import config
 from utils.ibkr_client import IBKRClient
+from utils.ibkr_marketdata_api import (
+    IBKRMarketDataAPI,
+    DEFAULT_SNAPSHOT_FIELDS,
+    extract_last_price,
+)
 from utils.chart_generator import ChartGenerator, ensure_kaleido_available, KaleidoMissingError
 from utils.llm_signal_analyzer import LLMSignalAnalyzer
 from utils.mlflow_tracking import mlflow_run_context
@@ -67,6 +72,10 @@ LLM_PROVIDER = config.llm_provider  # from LLM_PROVIDER env var
 LLM_MODEL = config.llm_model  # from LLM_MODEL env var
 LLM_API_KEY = config.llm_api_key  # from LLM_API_KEY env var
 LLM_API_BASE_URL = config.llm_api_base_url  # from LLM_API_BASE_URL env var
+IBKR_API_BASE_URL = getattr(config, 'ibkr_api_base_url', '')
+IBKR_API_VERIFY_SSL = getattr(config, 'ibkr_api_verify_ssl', False)
+IBKR_API_TIMEOUT = getattr(config, 'ibkr_api_timeout', 15)
+IBKR_PRIMARY_CONID = getattr(config, 'ibkr_primary_conid', None)
 
 # Workflow schedule configuration
 # Default: None (manual trigger only)
@@ -77,6 +86,29 @@ STRICT_MIN_DAILY_BARS = 252
 STRICT_MARKET_DATA_DURATION = '1 Y'
 STRICT_MARKET_DATA_BAR_SIZE = '1 day'
 PRICE_PRECISION = Decimal('0.01')
+
+
+def _normalize_portal_period(duration: str) -> str:
+    if not duration:
+        return '1y'
+    tokens = duration.strip().split()
+    if len(tokens) == 2:
+        qty, unit = tokens
+        return f"{qty}{unit.lower()[0]}"
+    return duration.replace(' ', '').lower()
+
+
+def _normalize_portal_bar_size(bar_size: str) -> str:
+    if not bar_size:
+        return '1d'
+    value = bar_size.strip().lower()
+    replacements = {
+        '1 day': '1d',
+        '1d': '1d',
+        '1 hour': '1h',
+        '1h': '1h'
+    }
+    return replacements.get(value, value.replace(' ', ''))
 
 
 def is_strict_mode() -> bool:
@@ -99,17 +131,153 @@ def _coerce_positive_decimal(value: Optional[Decimal]) -> Optional[Decimal]:
 
 def normalize_limit_price(
     signal: TradingSignal,
-    market_data: Optional[MarketData]
+    market_data: Optional[MarketData],
+    live_snapshot: Optional[Dict[str, Any]] = None
 ) -> Tuple[Optional[Decimal], Optional[str]]:
-    """Normalize limit price using signal suggestion first, then latest market data close."""
+    """Normalize limit price using signal suggestion, live snapshot, then historical close."""
     candidate = _coerce_positive_decimal(signal.suggested_entry_price)
     if candidate:
         return candidate, 'signal'
+    live_candidate = _coerce_live_snapshot_price(live_snapshot)
+    if live_candidate:
+        return live_candidate, 'live_market_snapshot'
     if market_data:
         fallback = _coerce_positive_decimal(market_data.latest_price)
         if fallback:
             return fallback, 'market_data_close'
     return None, None
+
+
+def _build_market_data_from_history(symbol: str, bars_payload: Dict[str, Any], bar_size: str) -> Optional[MarketData]:
+    data_rows = bars_payload.get('data') or bars_payload.get('bars')
+    if not data_rows:
+        return None
+    ohlcv_bars: List[OHLCVBar] = []
+    for entry in data_rows:
+        try:
+            timestamp = datetime.utcfromtimestamp(int(entry['t']) / 1000)
+            open_p = Decimal(str(entry['o']))
+            high_p = Decimal(str(entry['h']))
+            low_p = Decimal(str(entry['l']))
+            close_p = Decimal(str(entry['c']))
+            volume = int(entry.get('v', 0) or 0)
+        except (KeyError, ValueError, TypeError):
+            continue
+        ohlcv_bars.append(
+            OHLCVBar(
+                timestamp=timestamp,
+                open=open_p,
+                high=high_p,
+                low=low_p,
+                close=close_p,
+                volume=volume
+            )
+        )
+    if not ohlcv_bars:
+        return None
+    return MarketData(
+        symbol=symbol,
+        exchange='SMART',
+        bars=ohlcv_bars,
+        timeframe=bar_size,
+        fetched_at=datetime.utcnow()
+    )
+
+
+def _coerce_live_snapshot_price(live_snapshot: Optional[Dict[str, Any]]) -> Optional[Decimal]:
+    if not live_snapshot:
+        return None
+    raw_price = live_snapshot.get('last_price')
+    if raw_price is None:
+        raw_entry = live_snapshot.get('raw')
+        if isinstance(raw_entry, dict):
+            raw_price = extract_last_price(raw_entry)
+    if raw_price is None:
+        fields = live_snapshot.get('fields') if isinstance(live_snapshot, dict) else None
+        if isinstance(fields, dict):
+            for candidate_field in ('31', '84', '85'):
+                if fields.get(candidate_field) is not None:
+                    raw_price = fields.get(candidate_field)
+                    break
+    if raw_price is None:
+        return None
+    return _coerce_positive_decimal(raw_price)
+
+
+def _capture_live_market_snapshot(symbol: str, task_instance) -> Tuple[Optional[int], Optional[Dict[str, Any]]]:
+    if not IBKR_API_BASE_URL:
+        return None, None
+    try:
+        client = IBKRMarketDataAPI(
+            base_url=IBKR_API_BASE_URL,
+            verify_ssl=IBKR_API_VERIFY_SSL,
+            timeout=IBKR_API_TIMEOUT
+        )
+        conid = client.resolve_conid(symbol, preferred_conid=IBKR_PRIMARY_CONID)
+        if not conid:
+            logger.warning("IBKR Client Portal API could not resolve a conid for %s", symbol)
+            return None, None
+        snapshot_response = client.get_live_snapshot(conid)
+        snapshot_entry = _select_snapshot_entry(snapshot_response, conid)
+        if not snapshot_entry:
+            logger.warning("No live snapshot data returned for conid %s", conid)
+            return conid, None
+        payload = _build_live_snapshot_payload(conid, snapshot_entry)
+        if payload and task_instance:
+            task_instance.xcom_push(key='live_market_data', value=payload)
+        return conid, payload
+    except Exception as exc:
+        logger.warning("Failed to fetch IBKR live snapshot via Client Portal API: %s", exc)
+        return None, None
+
+
+def _select_snapshot_entry(snapshot_response: Any, target_conid: Optional[int]) -> Optional[Dict[str, Any]]:
+    if isinstance(snapshot_response, list):
+        if not snapshot_response:
+            return None
+        for entry in snapshot_response:
+            if _extract_conid(entry) == target_conid:
+                return entry
+        return snapshot_response[0]
+    if isinstance(snapshot_response, dict):
+        target_key = str(target_conid) if target_conid is not None else None
+        if target_key and target_key in snapshot_response and isinstance(snapshot_response[target_key], dict):
+            return snapshot_response[target_key]
+        if 'data' in snapshot_response and isinstance(snapshot_response['data'], list):
+            return snapshot_response['data'][0] if snapshot_response['data'] else None
+        for value in snapshot_response.values():
+            if isinstance(value, dict) and (_extract_conid(value) == target_conid or target_conid is None):
+                return value
+        return None
+    return snapshot_response if isinstance(snapshot_response, dict) else None
+
+
+def _extract_conid(entry: Any) -> Optional[int]:
+    if not isinstance(entry, dict):
+        return None
+    for key in ('conid', 'conId', 'contractId'):
+        if entry.get(key) is None:
+            continue
+        try:
+            return int(entry[key])
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _build_live_snapshot_payload(conid: int, entry: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(entry, dict):
+        return {'conid': conid, 'raw': entry}
+    payload = {
+        'conid': conid,
+        'fields': {field: entry.get(field) for field in DEFAULT_SNAPSHOT_FIELDS if field in entry},
+        'raw': entry,
+        'last_price': extract_last_price(entry),
+        'source': 'ibkr_client_portal',
+        'timestamp': entry.get('time'),
+        'symbol': entry.get('55') or entry.get('symbol')
+    }
+    return payload
 
 
 def fetch_market_data_task(**context):
@@ -151,6 +319,11 @@ def fetch_market_data_task(**context):
             task_instance = context['task_instance']
             task_instance.xcom_push(key='market_data', value=market_data.model_dump_json())
             client_metadata = client.get_metadata() if hasattr(client, 'get_metadata') else {}
+            live_snapshot_info: Optional[Dict[str, Any]] = None
+            live_conid: Optional[int] = None
+            if IBKR_API_BASE_URL:
+                live_conid, live_snapshot_info = _capture_live_market_snapshot(SYMBOL, task_instance)
+
             market_data_metadata = {
                 'strict_mode': strict_mode,
                 'bars_requested': requested_duration,
@@ -163,6 +336,24 @@ def fetch_market_data_task(**context):
                 'requested_min_bars': STRICT_MIN_DAILY_BARS,
                 'latest_price': float(market_data.latest_price),
             }
+            if live_snapshot_info:
+                market_data_metadata['live_snapshot'] = {
+                    'conid': live_conid,
+                    'last_price': live_snapshot_info.get('last_price'),
+                    'fields': live_snapshot_info.get('fields'),
+                    'source': live_snapshot_info.get('source'),
+                    'timestamp': live_snapshot_info.get('timestamp')
+                }
+                logger.info(
+                    "Live market snapshot fetched via Client Portal API (conid=%s, last=%s)",
+                    live_conid,
+                    live_snapshot_info.get('last_price')
+                )
+            elif live_conid:
+                market_data_metadata['live_snapshot'] = {
+                    'conid': live_conid,
+                    'source': 'ibkr_client_portal'
+                }
             task_instance.xcom_push(key='market_data_metadata', value=market_data_metadata)
             
             return {
@@ -369,7 +560,8 @@ def generate_weekly_chart_task(**context):
         if not market_data_json:
             raise ValueError("No market data found in XCom. Run fetch_market_data task first.")
         market_data = MarketData.model_validate_json(market_data_json)
-        
+        market_data_metadata = task_instance.xcom_pull(task_ids='fetch_market_data', key='market_data_metadata') or {}
+
         # Confirm Kaleido is ready for weekly export
         kaleido_status = 'unknown'
         try:
@@ -695,7 +887,8 @@ def place_order_task(**context):
         market_data_json = task_instance.xcom_pull(task_ids='fetch_market_data', key='market_data')
         market_data = MarketData.model_validate_json(market_data_json) if market_data_json else None
         market_data_metadata = task_instance.xcom_pull(task_ids='fetch_market_data', key='market_data_metadata') or {}
-        normalized_limit_price, price_source = normalize_limit_price(signal, market_data)
+        live_market_snapshot = task_instance.xcom_pull(task_ids='fetch_market_data', key='live_market_data')
+        normalized_limit_price, price_source = normalize_limit_price(signal, market_data, live_market_snapshot)
         if not normalized_limit_price:
             reason = (
                 "Unable to compute a positive limit price from the LLM signal or latest market data. "
@@ -770,7 +963,8 @@ def place_order_task(**context):
                     'limit_price_source': price_source,
                     'strict_mode': strict_mode,
                     'market_data_bars': market_data.bar_count if market_data else None,
-                    'market_data_context': market_data_metadata
+                    'market_data_context': market_data_metadata,
+                    'live_market_data': live_market_snapshot
                 }
             )
         except Exception as e:

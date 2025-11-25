@@ -87,6 +87,11 @@ x-airflow-common: &airflow-common
     MINIO_SECURE: "false"
     # Chart storage directory (shared volume)
     CHARTS_DIR: "/app/charts"
+    # IBKR Client Portal configuration shared with Airflow
+    IBKR_API_BASE_URL: ${IBKR_API_BASE_URL:-https://ibkr-gateway:443/v1/api}
+    IBKR_API_BASE_URL_INTERNAL: ${IBKR_API_BASE_URL_INTERNAL:-https://ibkr-gateway:443/v1/api}
+    IBKR_SSL_VERIFY: ${IBKR_SSL_VERIFY:-false}
+    IBKR_PRIMARY_CONID: ${IBKR_PRIMARY_CONID:-}
     # Workflow configuration
     DEBUG_MODE: ${DEBUG_MODE:-false}
     STOCK_SYMBOLS: ${STOCK_SYMBOLS:-TSLA,NVDA}

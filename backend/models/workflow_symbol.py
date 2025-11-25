@@ -15,7 +15,7 @@ from sqlalchemy import (
     inspect,
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 
 from backend.core.database import Base
 
@@ -31,11 +31,7 @@ class SymbolWorkflowLink(Base):
         ForeignKey("workflow_symbols.id", ondelete="CASCADE"),
         nullable=False,
     )
-    workflow_id = Column(
-        Integer,
-        ForeignKey("workflows.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    dag_id = Column(String(255), nullable=False)  # Airflow DAG ID
 
     is_active = Column(Boolean, default=True, nullable=False)
     priority = Column(Integer, default=0, nullable=False)
@@ -43,6 +39,7 @@ class SymbolWorkflowLink(Base):
     session_start = Column(Time(timezone=False))
     session_end = Column(Time(timezone=False))
     allow_weekend = Column(Boolean, default=False, nullable=False)
+    schedule_interval = Column(String(64), default="0 9 * * *")  # Cron expression or preset
     config = Column(JSON)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -54,7 +51,7 @@ class SymbolWorkflowLink(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("workflow_symbol_id", "workflow_id", name="uq_symbol_workflow_link"),
+        UniqueConstraint("workflow_symbol_id", "dag_id", name="uq_symbol_workflow_link"),
         Index("idx_symbol_workflow_links_symbol_priority", "workflow_symbol_id", "priority"),
     )
 
@@ -65,19 +62,17 @@ class SymbolWorkflowLink(Base):
         return value.strftime("%H:%M") if value else None
 
     def to_dict(self) -> dict:
-        workflow = self.workflow
         return {
-            "link_id": self.id,
-            "workflow_id": self.workflow_id,
-            "workflow_name": workflow.name if workflow else None,
-            "workflow_is_active": workflow.is_active if workflow else None,
-            "dag_id": workflow.dag_id if workflow else None,
-            "is_active": self.is_active,
+            "id": self.id,
+            "workflow_symbol_id": self.workflow_symbol_id,
+            "dag_id": self.dag_id,
+            "is_active": bool(self.is_active),
             "priority": self.priority,
             "timezone": self.timezone,
             "session_start": self.format_time(self.session_start),
             "session_end": self.format_time(self.session_end),
             "allow_weekend": bool(self.allow_weekend),
+            "schedule_interval": self.schedule_interval,
             "config": self.config,
         }
 
@@ -92,6 +87,7 @@ class WorkflowSymbol(Base):
     name = Column(String(100))  # Company name
     enabled = Column(Boolean, default=True, nullable=False, index=True)
     priority = Column(Integer, default=0)  # Global priority
+    conid = Column(Integer, nullable=True)  # IBKR Contract ID
     
     # Legacy fields (kept for backward compatibility or migration if needed, but effectively deprecated)
     workflow_type = Column(String(50), default="trading_signal")
@@ -137,10 +133,32 @@ class WorkflowSymbol(Base):
 
 
 def ensure_workflow_symbol_schema(engine) -> None:
-    """Ensure symbol_workflow_links table exists."""
+    """Ensure symbol_workflow_links table exists and workflow_symbols has conid."""
     try:
         inspector = inspect(engine)
         if "symbol_workflow_links" not in inspector.get_table_names():
             SymbolWorkflowLink.__table__.create(engine)
+            
+        # Check for conid column in workflow_symbols
+        if "workflow_symbols" in inspector.get_table_names():
+            columns = [c["name"] for c in inspector.get_columns("workflow_symbols")]
+            if "conid" not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE workflow_symbols ADD COLUMN conid INTEGER"))
+                    conn.commit()
+
+        # Check for schedule_interval in symbol_workflow_links
+        if "symbol_workflow_links" in inspector.get_table_names():
+            columns = [c["name"] for c in inspector.get_columns("symbol_workflow_links")]
+            if"schedule_interval" not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE symbol_workflow_links ADD COLUMN schedule_interval VARCHAR(64) DEFAULT '0 9 * * *'"))
+                    conn.commit()
+            
+            # Add dag_id column if missing
+            if "dag_id" not in columns:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE symbol_workflow_links ADD COLUMN dag_id VARCHAR(255)"))
+                    conn.commit()
     except Exception:
         pass

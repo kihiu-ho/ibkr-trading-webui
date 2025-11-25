@@ -39,7 +39,7 @@ from dags.ibkr_trading_signal_workflow import (
     fetch_market_data_task, generate_daily_chart_task, generate_weekly_chart_task,
     analyze_with_llm_task, place_order_task, get_trades_task,
     get_portfolio_task, log_to_mlflow_task, SYMBOL, IBKR_HOST, IBKR_PORT, POSITION_SIZE,
-    MARKET_DATA_DURATION, MARKET_DATA_BAR_SIZE
+    MARKET_DATA_DURATION, MARKET_DATA_BAR_SIZE, normalize_limit_price
 )
 from dags.models.market_data import MarketData, OHLCVBar
 from dags.models.chart import ChartResult, ChartConfig, Timeframe
@@ -105,6 +105,70 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
         self.assertEqual(result['symbol'], SYMBOL)
         self.assertEqual(result['bars'], 2)
         self.assertEqual(result['latest_price'], 107.0)
+
+    @patch('dags.ibkr_trading_signal_workflow._capture_live_market_snapshot')
+    @patch('dags.ibkr_trading_signal_workflow.IBKR_API_BASE_URL', 'https://mock-api')
+    @patch('dags.ibkr_trading_signal_workflow.IBKRClient')
+    def test_fetch_market_data_task_stores_live_snapshot(self, MockIBKRClient, mock_capture):
+        mock_client_instance = MockIBKRClient.return_value.__enter__.return_value
+        mock_market_data = MarketData(
+            symbol=SYMBOL,
+            bars=[
+                OHLCVBar(timestamp=datetime(2023, 1, 1), open=100.0, high=105.0, low=99.0, close=103.0, volume=100000),
+            ],
+            timeframe='1 day'
+        )
+        mock_client_instance.fetch_market_data.return_value = mock_market_data
+        mock_client_instance.get_metadata.return_value = {'connection_mode': 'ibkr'}
+
+        live_payload = {
+            'conid': 1234,
+            'last_price': 250.5,
+            'fields': {'31': 250.5},
+            'source': 'ibkr_client_portal',
+            'timestamp': 123456789
+        }
+
+        def _mock_capture(symbol, task_instance):
+            task_instance.xcom_push(key='live_market_data', value=live_payload)
+            return live_payload['conid'], live_payload
+
+        mock_capture.side_effect = _mock_capture
+
+        fetch_market_data_task(**self.mock_context)
+
+        # Ensure live snapshot stored in XCom
+        live_pushes = [
+            call for call in self.mock_context['task_instance'].xcom_push.call_args_list
+            if call.kwargs.get('key') == 'live_market_data'
+        ]
+        self.assertEqual(len(live_pushes), 1)
+        self.assertEqual(live_pushes[0].kwargs['value']['last_price'], 250.5)
+
+        # Ensure metadata includes live snapshot context
+        metadata_call = next(
+            call for call in self.mock_context['task_instance'].xcom_push.call_args_list
+            if call.kwargs.get('key') == 'market_data_metadata'
+        )
+        self.assertIn('live_snapshot', metadata_call.kwargs['value'])
+        self.assertEqual(metadata_call.kwargs['value']['live_snapshot']['conid'], 1234)
+
+    def test_normalize_limit_price_prefers_live_snapshot(self):
+        signal = TradingSignal(
+            symbol=SYMBOL,
+            action=SignalAction.BUY,
+            confidence=SignalConfidence.HIGH,
+            confidence_score=80,
+            reasoning="Reasoning text",
+            is_actionable=True,
+            suggested_entry_price=None,
+            model_used='mock_model',
+            timeframe_analyzed='daily'
+        )
+        live_snapshot = {'last_price': '199.23', 'fields': {'31': 199.23}}
+        price, source = normalize_limit_price(signal, None, live_snapshot)
+        self.assertEqual(price, Decimal('199.23'))
+        self.assertEqual(source, 'live_market_snapshot')
     
     @patch('dags.ibkr_trading_signal_workflow.is_strict_mode', return_value=True)
     @patch('dags.ibkr_trading_signal_workflow.IBKRClient')
@@ -158,6 +222,8 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             symbol=SYMBOL,
             timeframe=Timeframe.DAILY,
             file_path=os.path.join(os.getenv('CHARTS_DIR'), f"{SYMBOL}_daily_chart.png"),
+            width=1920,
+            height=1080,
             indicators_included=['SMA', 'RSI'],
             periods_shown=60
         )
@@ -214,6 +280,8 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             symbol=SYMBOL,
             timeframe=Timeframe.WEEKLY,
             file_path=os.path.join(os.getenv('CHARTS_DIR'), f"{SYMBOL}_weekly_chart.png"),
+            width=1920,
+            height=1080,
             indicators_included=['SMA', 'RSI'],
             periods_shown=52
         )
@@ -224,7 +292,9 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
         result = generate_weekly_chart_task(**self.mock_context)
 
         MockChartGenerator.assert_called_with(output_dir=os.getenv('CHARTS_DIR'))
-        mock_chart_gen_instance.resample_to_weekly.assert_called_once_with(mock_market_data)
+        mock_chart_gen_instance.resample_to_weekly.assert_called_once()
+        resample_arg = mock_chart_gen_instance.resample_to_weekly.call_args[0][0]
+        self.assertEqual(resample_arg.symbol, mock_market_data.symbol)
         mock_chart_gen_instance.generate_chart.assert_called_once()
         self.mock_context['task_instance'].xcom_push.assert_any_call(
             key='weekly_chart', value=mock_chart_result.model_dump_json()
@@ -240,7 +310,16 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
     def test_analyze_with_llm_task(self, mock_store_signal_artifact, mock_store_llm_artifact, MockLLMSignalAnalyzer):
         mock_market_data = MarketData(
             symbol=SYMBOL,
-            bars=[],
+            bars=[
+                OHLCVBar(
+                    timestamp=datetime(2023, 1, 1),
+                    open=100.0,
+                    high=105.0,
+                    low=99.0,
+                    close=103.0,
+                    volume=100000
+                )
+            ],
             latest_price=100.0,
             timeframe='1 day'
         )
@@ -248,13 +327,19 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             symbol=SYMBOL,
             timeframe=Timeframe.DAILY,
             file_path='daily.png',
-            indicators_included=['SMA']
+            width=1920,
+            height=1080,
+            indicators_included=['SMA'],
+            periods_shown=60
         )
         mock_weekly_chart = ChartResult(
             symbol=SYMBOL,
             timeframe=Timeframe.WEEKLY,
             file_path='weekly.png',
-            indicators_included=['SMA']
+            width=1920,
+            height=1080,
+            indicators_included=['SMA'],
+            periods_shown=52
         )
         mock_signal = TradingSignal(
             symbol=SYMBOL,
@@ -286,7 +371,7 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             base_url=os.getenv('LLM_API_BASE_URL')
         )
         mock_analyzer_instance.analyze_charts.assert_called_once()
-        self.mock_context['task_instance'].xcom_push.assert_called_once_with(
+        self.mock_context['task_instance'].xcom_push.assert_any_call(
             key='trading_signal', value=mock_signal.model_dump_json()
         )
         mock_store_llm_artifact.assert_called_once()
@@ -325,7 +410,7 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             quantity=POSITION_SIZE,
             order_type=OrderType.LIMIT,
             limit_price=101.0,
-            order_id=123,
+            order_id='123',
             status=OrderStatus.SUBMITTED,
             submitted_at=datetime.now()
         )
@@ -350,7 +435,7 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
         mock_store_order_artifact.assert_called_once()
         mock_update_artifact.assert_called()
         self.assertTrue(result['order_placed'])
-        self.assertEqual(result['order_id'], 123)
+        self.assertEqual(result['order_id'], '123')
     
     @patch('dags.ibkr_trading_signal_workflow.update_artifact')
     @patch('dags.ibkr_trading_signal_workflow.IBKRClient')
@@ -378,7 +463,7 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             quantity=POSITION_SIZE,
             order_type=OrderType.LIMIT,
             limit_price=Decimal('112.12'),
-            order_id=456,
+            order_id='456',
             status=OrderStatus.SUBMITTED,
             submitted_at=datetime.now()
         )
@@ -467,11 +552,13 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             quantity=POSITION_SIZE,
             order_type=OrderType.LIMIT,
             limit_price=101.0,
-            order_id=123,
+            order_id='123',
             status=OrderStatus.FILLED,
             submitted_at=datetime.now()
         )
+        execution_time = datetime.now()
         mock_trade = Trade(
+            order_id='123',
             symbol=SYMBOL,
             total_quantity=POSITION_SIZE,
             average_price=101.0,
@@ -479,10 +566,19 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             total_cost=POSITION_SIZE * 101.0,
             total_commission=1.0,
             executions=[
-                TradeExecution(execution_id='exec1', quantity=POSITION_SIZE, price=101.0, time=datetime.now())
+                TradeExecution(
+                    execution_id='exec1',
+                    order_id='123',
+                    symbol=SYMBOL,
+                    side='BUY',
+                    quantity=POSITION_SIZE,
+                    price=Decimal('101.0'),
+                    commission=Decimal('1.0'),
+                    executed_at=execution_time
+                )
             ],
-            first_execution_at=datetime.now(),
-            last_execution_at=datetime.now()
+            first_execution_at=execution_time,
+            last_execution_at=execution_time
         )
 
         self.mock_context['task_instance'].xcom_pull.side_effect = [

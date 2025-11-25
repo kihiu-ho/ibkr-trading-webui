@@ -11,34 +11,61 @@ from sqlalchemy.orm import Session, selectinload
 from backend.core.database import get_db
 from backend.models.workflow import Workflow
 from backend.models.workflow_symbol import SymbolWorkflowLink, WorkflowSymbol
+from backend.services.ibkr_service import IBKRService
+import httpx
+from backend.app.routes.airflow_proxy import AIRFLOW_API_URL, AIRFLOW_USER, AIRFLOW_PASSWORD
 
 router = APIRouter(prefix="/api/workflow-symbols", tags=["workflow-symbols"])
 
 
 class SymbolWorkflowConfig(BaseModel):
     """Configuration for a specific workflow linked to a symbol."""
-    workflow_id: int
+    dag_id: str
     is_active: bool = True
     timezone: str = "America/New_York"
     session_start: Optional[time] = None
     session_end: Optional[time] = None
     allow_weekend: bool = False
+    schedule_interval: str = "0 9 * * *"  # Cron expression or preset
     config: Optional[dict] = None
+
+    @staticmethod
+    def _parse_time_string(v):
+        """Parse time from string format HH:MM or HH:MM:SS"""
+        if v is None or isinstance(v, time):
+            return v
+        if isinstance(v, str):
+            from datetime import time as dt_time
+            parts = v.split(':')
+            if len(parts) >= 2:
+                hour = int(parts[0])
+                minute = int(parts[1])
+                second = int(parts[2]) if len(parts) > 2 else 0
+                return dt_time(hour, minute, second)
+        return v
+
+    @classmethod
+    def model_validate(cls, obj, *args, **kwargs):
+        """Override model_validate to handle time string parsing"""
+        if isinstance(obj, dict):
+            if 'session_start' in obj and isinstance(obj['session_start'], str):
+                obj['session_start'] = cls._parse_time_string(obj['session_start'])
+            if 'session_end' in obj and isinstance(obj['session_end'], str):
+                obj['session_end'] = cls._parse_time_string(obj['session_end'])
+        return super().model_validate(obj, *args, **kwargs)
 
 
 class LinkedWorkflowSummary(BaseModel):
     """Workflow summary with link-specific configuration."""
     link_id: int
-    workflow_id: int
-    workflow_name: Optional[str]
-    workflow_is_active: Optional[bool]
-    dag_id: Optional[str]
+    dag_id: str
     is_active: bool
     priority: int
     timezone: str
     session_start: Optional[str]
     session_end: Optional[str]
     allow_weekend: bool
+    schedule_interval: str
     config: Optional[dict]
 
 
@@ -47,7 +74,7 @@ class WorkflowSymbolCreate(BaseModel):
     name: Optional[str] = Field(None, max_length=100, description="Company name")
     enabled: bool = Field(True, description="Enable/disable symbol globally")
     priority: int = Field(0, description="Global processing priority")
-    workflow_type: str = Field('trading_signal', description="Workflow type (legacy)")
+    conid: Optional[int] = Field(None, description="IBKR Contract ID (optional, can be looked up in UI)")
     workflows: List[SymbolWorkflowConfig] = Field(..., min_length=1, description="Workflows to associate")
 
 
@@ -55,7 +82,6 @@ class WorkflowSymbolUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
     enabled: Optional[bool] = None
     priority: Optional[int] = None
-    workflow_type: Optional[str] = None
     workflows: Optional[List[SymbolWorkflowConfig]] = Field(None, description="Replace workflow links")
 
 
@@ -65,7 +91,7 @@ class WorkflowSymbolResponse(BaseModel):
     name: Optional[str]
     enabled: bool
     priority: int
-    workflow_type: str
+    conid: Optional[int]
     created_at: Optional[str]
     updated_at: Optional[str]
     workflows: List[LinkedWorkflowSummary] = Field(default_factory=list)
@@ -123,32 +149,30 @@ def _assign_workflows(db: Session, symbol: WorkflowSymbol, configs: List[SymbolW
     if not configs:
         raise HTTPException(status_code=400, detail="At least one workflow must be selected")
 
-    workflow_ids = [c.workflow_id for c in configs]
-    seen: Set[int] = set()
-    duplicates: Set[int] = set()
-    for wf_id in workflow_ids:
-        if wf_id in seen:
-            duplicates.add(wf_id)
+    dag_ids = [c.dag_id for c in configs]
+    seen: Set[str] = set()
+    duplicates: Set[str] = set()
+    for dag_id in dag_ids:
+        if dag_id in seen:
+            duplicates.add(dag_id)
         else:
-            seen.add(wf_id)
+            seen.add(dag_id)
     if duplicates:
         raise HTTPException(
             status_code=400,
-            detail=f"Duplicate workflow_ids detected: {sorted(duplicates)}",
+            detail=f"Duplicate dag_ids detected: {sorted(duplicates)}",
         )
 
-    _load_workflows(db, workflow_ids)
-
-    existing_links = {link.workflow_id: link for link in symbol.workflow_links}
-    processed: Set[int] = set()
+    existing_links = {link.dag_id: link for link in symbol.workflow_links}
+    processed: Set[str] = set()
 
     for idx, config in enumerate(configs):
         normalized_tz = _normalize_timezone(config.timezone)
         _validate_session_window(config.session_start, config.session_end)
 
-        link = existing_links.get(config.workflow_id)
+        link = existing_links.get(config.dag_id)
         if not link:
-            link = SymbolWorkflowLink(workflow_id=config.workflow_id)
+            link = SymbolWorkflowLink(dag_id=config.dag_id)
             symbol.workflow_links.append(link)
 
         link.is_active = bool(config.is_active)
@@ -157,13 +181,14 @@ def _assign_workflows(db: Session, symbol: WorkflowSymbol, configs: List[SymbolW
         link.session_start = config.session_start
         link.session_end = config.session_end
         link.allow_weekend = bool(config.allow_weekend)
+        link.schedule_interval = config.schedule_interval
         link.config = config.config
 
-        processed.add(config.workflow_id)
+        processed.add(config.dag_id)
 
     # Remove any links that are no longer configured
     for link in list(symbol.workflow_links):
-        if link.workflow_id not in processed:
+        if link.dag_id not in processed:
             symbol.workflow_links.remove(link)
 
 
@@ -186,26 +211,61 @@ def list_symbols(
 
 
 @router.post("/", response_model=WorkflowSymbolResponse, status_code=201)
-def create_symbol(symbol_data: WorkflowSymbolCreate, db: Session = Depends(get_db)):
+async def create_symbol(symbol_data: WorkflowSymbolCreate, db: Session = Depends(get_db)):
     symbol_data.symbol = validate_symbol(symbol_data.symbol)
     existing = db.query(WorkflowSymbol).filter(WorkflowSymbol.symbol == symbol_data.symbol).first()
     if existing:
         raise HTTPException(status_code=409, detail=f"Symbol {symbol_data.symbol} already exists")
+
+    # Use provided conid if available, otherwise attempt lookup as fallback
+    conid = symbol_data.conid
+    if not conid:
+        try:
+            ibkr = IBKRService()
+            contracts = await ibkr.search_contracts(symbol_data.symbol)
+            if contracts:
+                conid = contracts[0].get('conid')
+        except Exception as e:
+            print(f"Failed to lookup conid for {symbol_data.symbol}: {e}")
 
     new_symbol = WorkflowSymbol(
         symbol=symbol_data.symbol,
         name=symbol_data.name,
         enabled=symbol_data.enabled,
         priority=symbol_data.priority,
-        workflow_type=symbol_data.workflow_type,
+        conid=conid
     )
     db.add(new_symbol)
-    # Assign workflows before flush to ensure relationships are set
     _assign_workflows(db, new_symbol, symbol_data.workflows)
     
     db.commit()
     db.refresh(new_symbol)
+
+    # Trigger Airflow DAGs for active workflows
+    active_workflows = [w for w in symbol_data.workflows if w.is_active]
+    if active_workflows:
+        async with httpx.AsyncClient() as client:
+            for wf_config in active_workflows:
+                try:
+                    await _trigger_dag_run(client, wf_config.dag_id, conf={
+                        "symbol": new_symbol.symbol,
+                        "conid": conid,
+                        "workflow_symbol_id": new_symbol.id
+                    })
+                except Exception as e:
+                    print(f"Failed to trigger DAG {wf_config.dag_id}: {e}")
+
     return _serialize_symbol(new_symbol)
+
+
+async def _trigger_dag_run(client: httpx.AsyncClient, dag_id: str, conf: dict = None):
+    """Trigger an Airflow DAG run."""
+    url = f"{AIRFLOW_API_URL}/dags/{dag_id}/dagRuns"
+    auth = (AIRFLOW_USER, AIRFLOW_PASSWORD)
+    payload = {"conf": conf or {}}
+    
+    response = await client.post(url, json=payload, auth=auth, timeout=10.0)
+    response.raise_for_status()
 
 
 @router.get("/{symbol}", response_model=WorkflowSymbolResponse)
