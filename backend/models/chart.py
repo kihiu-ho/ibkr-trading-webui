@@ -1,6 +1,5 @@
 """Chart model for storing generated technical analysis charts."""
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, DECIMAL, BigInteger
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, DECIMAL, BigInteger, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from backend.core.database import Base
@@ -36,7 +35,7 @@ class Chart(Base):
     minio_object_key = Column(String(500), nullable=True)
     
     # Chart Metadata
-    indicators_applied = Column(JSONB, nullable=True)  # {"RSI": {"period": 14}, "MACD": {...}}
+    indicators_applied = Column(JSON, nullable=True)  # {"RSI": {"period": 14}, "MACD": {...}}
     data_points = Column(Integer, nullable=True)
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
@@ -81,4 +80,3 @@ class Chart(Base):
     
     def __repr__(self):
         return f"<Chart(id={self.id}, symbol={self.symbol}, timeframe={self.timeframe}, generated_at={self.generated_at})>"
-

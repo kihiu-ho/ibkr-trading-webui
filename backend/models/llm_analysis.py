@@ -1,6 +1,5 @@
 """LLM Analysis model for storing AI-generated market analysis."""
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, DECIMAL
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, DECIMAL, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from backend.core.database import Base
@@ -33,18 +32,18 @@ class LLMAnalysis(Base):
     timeframe = Column(String(10), nullable=True)  # '1d', '1w', '1mo'
     
     # Strategy Context
-    indicators_metadata = Column(JSONB, nullable=True)  # Full indicator configuration used
+    indicators_metadata = Column(JSON, nullable=True)  # Full indicator configuration used
     
     # LLM Response
     response_text = Column(Text, nullable=True)
-    response_json = Column(JSONB, nullable=True)  # Structured response if applicable
+    response_json = Column(JSON, nullable=True)  # Structured response if applicable
     confidence_score = Column(DECIMAL(5, 4), nullable=True)
     
     # Technical Insights Extracted from LLM Response
     trend_direction = Column(String(20), nullable=True)  # bullish, bearish, neutral
-    support_levels = Column(JSONB, nullable=True)  # [150.20, 148.50]
-    resistance_levels = Column(JSONB, nullable=True)  # [155.00, 158.30]
-    key_patterns = Column(JSONB, nullable=True)  # ['double_bottom', 'breakout']
+    support_levels = Column(JSON, nullable=True)  # [150.20, 148.50]
+    resistance_levels = Column(JSON, nullable=True)  # [155.00, 158.30]
+    key_patterns = Column(JSON, nullable=True)  # ['double_bottom', 'breakout']
     
     # Performance Metadata
     tokens_used = Column(Integer, nullable=True)
@@ -90,4 +89,3 @@ class LLMAnalysis(Base):
     
     def __repr__(self):
         return f"<LLMAnalysis(id={self.id}, symbol={self.symbol}, model={self.model_name}, analyzed_at={self.analyzed_at})>"
-

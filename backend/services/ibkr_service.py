@@ -205,6 +205,19 @@ class IBKRService:
         response = await self._request("GET", "/iserver/account/trades")
         return response if isinstance(response, list) else []
 
+    async def get_order_status(self, order_id: str) -> Dict[str, Any]:
+        """Fetch status for a specific order."""
+        return await self._request("GET", f"/iserver/account/orders/{order_id}")
+
+    async def get_positions(self, account_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Wrapper for portfolio positions."""
+        return await self.get_portfolio_positions(account_id)
+
+    async def get_market_data(self, conid: int) -> Dict[str, Any]:
+        """Convenience helper to get last price snapshot for a single contract."""
+        snapshot = await self.get_market_data_snapshot([conid], ["31", "84", "86"])
+        return snapshot.get(str(conid), {})
+
     async def automated_login(self, username: str, password: str, trading_mode: str = "paper") -> Dict[str, Any]:
         """
         Perform automated login to IBKR Gateway.

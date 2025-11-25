@@ -4,11 +4,13 @@ Complete end-to-end trading workflow: Market Data → Charts → LLM Analysis �
 """
 from datetime import datetime, timedelta
 from airflow import DAG
+from airflow.exceptions import AirflowFailException
 from airflow.operators.python import PythonOperator
 # from airflow.utils.dates import days_ago # Deprecated in Airflow 2.x+
 import logging
 import os
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from typing import Optional, Tuple
 
 # Import models
 from models.market_data import MarketData, OHLCVBar
@@ -32,7 +34,8 @@ from utils.artifact_storage import (
     store_order_artifact,
     store_trade_artifact,
     store_portfolio_artifact,
-    attach_artifact_lineage
+    attach_artifact_lineage,
+    update_artifact
 )
 from utils.minio_upload import upload_chart_to_minio
 
@@ -55,9 +58,11 @@ default_args = {
 
 # Configuration from environment
 SYMBOL = config.stock_symbols[0] if config.stock_symbols else "TSLA"
-IBKR_HOST = "gateway"  # Docker service name
-IBKR_PORT = 4002  # Paper trading port
+IBKR_HOST = getattr(config, 'ibkr_host', 'ibkr-gateway')
+IBKR_PORT = getattr(config, 'ibkr_port', 4002)
 POSITION_SIZE = 10  # Number of shares
+MARKET_DATA_DURATION = config.market_data_duration
+MARKET_DATA_BAR_SIZE = config.market_data_bar_size
 LLM_PROVIDER = config.llm_provider  # from LLM_PROVIDER env var
 LLM_MODEL = config.llm_model  # from LLM_MODEL env var
 LLM_API_KEY = config.llm_api_key  # from LLM_API_KEY env var
@@ -68,34 +73,103 @@ LLM_API_BASE_URL = config.llm_api_base_url  # from LLM_API_BASE_URL env var
 # Examples: '@daily', '0 9 * * 1-5' (9 AM weekdays), '@hourly'
 WORKFLOW_SCHEDULE = os.getenv('WORKFLOW_SCHEDULE', None) or None  # Convert empty string to None
 
+STRICT_MIN_DAILY_BARS = 252
+STRICT_MARKET_DATA_DURATION = '1 Y'
+STRICT_MARKET_DATA_BAR_SIZE = '1 day'
+PRICE_PRECISION = Decimal('0.01')
+
+
+def is_strict_mode() -> bool:
+    """Return whether the workflow is currently enforcing strict IBKR mode."""
+    return getattr(config, 'ibkr_strict_mode', False)
+
+
+def _coerce_positive_decimal(value: Optional[Decimal]) -> Optional[Decimal]:
+    """Normalize user/LLM-provided decimal inputs into positive, 2-decimal-place numbers."""
+    if value is None:
+        return None
+    try:
+        as_decimal = Decimal(value)
+    except (InvalidOperation, TypeError):
+        return None
+    if as_decimal <= 0:
+        return None
+    return as_decimal.quantize(PRICE_PRECISION, rounding=ROUND_HALF_UP)
+
+
+def normalize_limit_price(
+    signal: TradingSignal,
+    market_data: Optional[MarketData]
+) -> Tuple[Optional[Decimal], Optional[str]]:
+    """Normalize limit price using signal suggestion first, then latest market data close."""
+    candidate = _coerce_positive_decimal(signal.suggested_entry_price)
+    if candidate:
+        return candidate, 'signal'
+    if market_data:
+        fallback = _coerce_positive_decimal(market_data.latest_price)
+        if fallback:
+            return fallback, 'market_data_close'
+    return None, None
+
 
 def fetch_market_data_task(**context):
     """Fetch market data from IBKR"""
     logger.info("="*60)
     logger.info(f"Fetching market data for {SYMBOL}")
     logger.info("="*60)
+    strict_mode = is_strict_mode()
+    requested_duration = STRICT_MARKET_DATA_DURATION if strict_mode else MARKET_DATA_DURATION
+    requested_bar_size = STRICT_MARKET_DATA_BAR_SIZE if strict_mode else MARKET_DATA_BAR_SIZE
     
     try:
-        with IBKRClient(host=IBKR_HOST, port=IBKR_PORT) as client:
+        with IBKRClient(host=IBKR_HOST, port=IBKR_PORT, strict_mode=strict_mode) as client:
             # Fetch daily data
+            logger.info(
+                "Requesting %s of %s bars from IBKR for %s",
+                requested_duration,
+                requested_bar_size,
+                SYMBOL
+            )
             market_data = client.fetch_market_data(
                 symbol=SYMBOL,
                 exchange="SMART",
-                duration="200 D",
-                bar_size="1 day"
+                duration=requested_duration,
+                bar_size=requested_bar_size
             )
             
             logger.info(f"Fetched {market_data.bar_count} bars")
             logger.info(f"Latest price: ${market_data.latest_price}")
+            if strict_mode and market_data.bar_count < STRICT_MIN_DAILY_BARS:
+                message = (
+                    f"Strict mode requires ≥{STRICT_MIN_DAILY_BARS} daily bars for {SYMBOL}; "
+                    f"IBKR returned {market_data.bar_count}."
+                )
+                logger.error(message)
+                raise AirflowFailException(message)
             
             # Store in XCom as dict
             task_instance = context['task_instance']
             task_instance.xcom_push(key='market_data', value=market_data.model_dump_json())
+            client_metadata = client.get_metadata() if hasattr(client, 'get_metadata') else {}
+            market_data_metadata = {
+                'strict_mode': strict_mode,
+                'bars_requested': requested_duration,
+                'bar_size': requested_bar_size,
+                'bars_returned': market_data.bar_count,
+                'ibkr_host': IBKR_HOST,
+                'ibkr_port': IBKR_PORT,
+                'ib_insync_version': client_metadata.get('ib_insync_version'),
+                'ibkr_connection_mode': client_metadata.get('connection_mode'),
+                'requested_min_bars': STRICT_MIN_DAILY_BARS,
+                'latest_price': float(market_data.latest_price),
+            }
+            task_instance.xcom_push(key='market_data_metadata', value=market_data_metadata)
             
             return {
                 'symbol': market_data.symbol,
                 'bars': market_data.bar_count,
-                'latest_price': float(market_data.latest_price)
+                'latest_price': float(market_data.latest_price),
+                'strict_mode': strict_mode
             }
     
     except Exception as e:
@@ -117,6 +191,7 @@ def generate_daily_chart_task(**context):
         if not market_data_json:
             raise ValueError("No market data found in XCom. Run fetch_market_data task first.")
         market_data = MarketData.model_validate_json(market_data_json)
+        market_data_metadata = task_instance.xcom_pull(task_ids='fetch_market_data', key='market_data_metadata') or {}
         
         # Ensure Kaleido dependency is ready before generating charts
         kaleido_status = 'unknown'
@@ -183,6 +258,16 @@ def generate_daily_chart_task(**context):
                 'fetched_at': market_data.fetched_at.isoformat() if market_data.fetched_at else None,
                 'latest_price': float(market_data.latest_price),
                 'bar_count': market_data.bar_count,
+                'bars_requested': market_data_metadata.get('bars_requested'),
+                'bar_size': market_data_metadata.get('bar_size'),
+                'bars_returned': market_data_metadata.get('bars_returned', market_data.bar_count),
+                'strict_mode': market_data_metadata.get('strict_mode', False),
+                'ibkr_connection': {
+                    'host': market_data_metadata.get('ibkr_host'),
+                    'port': market_data_metadata.get('ibkr_port'),
+                    'ib_insync_version': market_data_metadata.get('ib_insync_version'),
+                    'mode': market_data_metadata.get('ibkr_connection_mode')
+                },
                 'bars': [
                     {
                         'date': bar.timestamp.isoformat(),
@@ -229,11 +314,13 @@ def generate_daily_chart_task(**context):
                     'timeframe': 'daily',
                     'bars_count': market_data.bar_count,
                     'minio_url': minio_url,
-                    'local_path': chart_result.file_path
+                    'local_path': chart_result.file_path,
+                    'strict_mode': market_data_metadata.get('strict_mode', False)
                 },
                 metadata={
                     'market_data_snapshot': market_data_snapshot,
-                    'indicator_summary': indicator_summary
+                    'indicator_summary': indicator_summary,
+                    'market_data_context': market_data_metadata
                 }
             )
             
@@ -350,6 +437,16 @@ def generate_weekly_chart_task(**context):
                 'fetched_at': weekly_data.fetched_at.isoformat() if weekly_data.fetched_at else None,
                 'latest_price': float(weekly_data.latest_price),
                 'bar_count': weekly_data.bar_count,
+                'bars_requested': market_data_metadata.get('bars_requested'),
+                'bar_size': market_data_metadata.get('bar_size'),
+                'bars_returned': market_data_metadata.get('bars_returned'),
+                'strict_mode': market_data_metadata.get('strict_mode', False),
+                'ibkr_connection': {
+                    'host': market_data_metadata.get('ibkr_host'),
+                    'port': market_data_metadata.get('ibkr_port'),
+                    'ib_insync_version': market_data_metadata.get('ib_insync_version'),
+                    'mode': market_data_metadata.get('ibkr_connection_mode')
+                },
                 'bars': [
                     {
                         'date': bar.timestamp.isoformat(),
@@ -390,11 +487,13 @@ def generate_weekly_chart_task(**context):
                     'timeframe': 'weekly',
                     'bars_count': weekly_data.bar_count,
                     'minio_url': minio_url,
-                    'local_path': chart_result.file_path
+                    'local_path': chart_result.file_path,
+                    'strict_mode': market_data_metadata.get('strict_mode', False)
                 },
                 metadata={
                     'market_data_snapshot': market_data_snapshot,
-                    'indicator_summary': indicator_summary
+                    'indicator_summary': indicator_summary,
+                    'market_data_context': market_data_metadata
                 }
             )
             
@@ -483,8 +582,6 @@ def analyze_with_llm_task(**context):
         
         # Update chart artifacts with LLM analysis context
         try:
-            from utils.artifact_storage import update_artifact
-            
             # Retrieve chart artifact IDs
             daily_artifact_id = task_instance.xcom_pull(task_ids='generate_daily_chart', key='daily_chart_artifact_id')
             weekly_artifact_id = task_instance.xcom_pull(task_ids='generate_weekly_chart', key='weekly_chart_artifact_id')
@@ -587,6 +684,7 @@ def place_order_task(**context):
         # Retrieve signal
         signal_json = task_instance.xcom_pull(task_ids='analyze_with_llm', key='trading_signal')
         signal = TradingSignal.model_validate_json(signal_json)
+        signal_artifact_id = task_instance.xcom_pull(task_ids='analyze_with_llm', key='signal_artifact_id')
         
         if not signal.is_actionable:
             logger.info(f"Signal not actionable: {signal.action} with {signal.confidence} confidence")
@@ -594,6 +692,41 @@ def place_order_task(**context):
             return {'order_placed': False, 'reason': 'Signal not actionable'}
         
         logger.info(f"Signal is actionable! Placing {signal.action} order")
+        market_data_json = task_instance.xcom_pull(task_ids='fetch_market_data', key='market_data')
+        market_data = MarketData.model_validate_json(market_data_json) if market_data_json else None
+        market_data_metadata = task_instance.xcom_pull(task_ids='fetch_market_data', key='market_data_metadata') or {}
+        normalized_limit_price, price_source = normalize_limit_price(signal, market_data)
+        if not normalized_limit_price:
+            reason = (
+                "Unable to compute a positive limit price from the LLM signal or latest market data. "
+                "Marking signal as non-actionable for this run."
+            )
+            logger.warning(reason)
+            if signal_artifact_id:
+                try:
+                    update_artifact(
+                        artifact_id=signal_artifact_id,
+                        updates={
+                            'metadata': {
+                                'order_status': 'rejected',
+                                'order_rejection_reason': reason,
+                                'strict_mode': is_strict_mode()
+                            }
+                        }
+                    )
+                except Exception as artifact_error:
+                    logger.warning(f"Failed to annotate signal artifact with rejection: {artifact_error}")
+            task_instance.xcom_push(key='order_placed', value=False)
+            task_instance.xcom_push(key='order_rejection_reason', value=reason)
+            return {'order_placed': False, 'reason': reason}
+        
+        task_instance.xcom_push(key='normalized_limit_price', value=float(normalized_limit_price))
+        strict_mode = is_strict_mode()
+        logger.info(
+            "Normalized limit price for order: %s (source=%s)",
+            normalized_limit_price,
+            price_source
+        )
         
         # Create order
         order = Order(
@@ -601,12 +734,12 @@ def place_order_task(**context):
             side=OrderSide.BUY if signal.action == SignalAction.BUY else OrderSide.SELL,
             quantity=POSITION_SIZE,
             order_type=OrderType.LIMIT,
-            limit_price=signal.suggested_entry_price,
+            limit_price=normalized_limit_price,
             signal_id=str(context['execution_date'])
         )
         
         # Place order via IBKR
-        with IBKRClient(host=IBKR_HOST, port=IBKR_PORT) as client:
+        with IBKRClient(host=IBKR_HOST, port=IBKR_PORT, strict_mode=strict_mode) as client:
             order = client.place_order(order)
         
         logger.info(f"Order placed: {order.order_id}")
@@ -631,10 +764,32 @@ def place_order_task(**context):
                 order_data={
                     'signal_id': order.signal_id,
                     'submitted_at': order.submitted_at.isoformat() if order.submitted_at else None
+                },
+                metadata={
+                    'normalized_limit_price': float(normalized_limit_price),
+                    'limit_price_source': price_source,
+                    'strict_mode': strict_mode,
+                    'market_data_bars': market_data.bar_count if market_data else None,
+                    'market_data_context': market_data_metadata
                 }
             )
         except Exception as e:
             logger.warning(f"Failed to store order artifact: {e}")
+        
+        if signal_artifact_id:
+            try:
+                update_artifact(
+                    artifact_id=signal_artifact_id,
+                    updates={
+                        'metadata': {
+                            'order_status': str(order.status),
+                            'normalized_limit_price': float(normalized_limit_price),
+                            'limit_price_source': price_source
+                        }
+                    }
+                )
+            except Exception as artifact_error:
+                logger.warning(f"Failed to annotate signal artifact with order metadata: {artifact_error}")
         
         # Store in XCom
         task_instance.xcom_push(key='order', value=order.model_dump_json())
@@ -644,7 +799,8 @@ def place_order_task(**context):
             'order_placed': True,
             'order_id': order.order_id,
             'side': order.side,
-            'quantity': order.quantity
+            'quantity': order.quantity,
+            'normalized_limit_price': float(normalized_limit_price)
         }
     
     except Exception as e:
@@ -671,7 +827,7 @@ def get_trades_task(**context):
         order = Order.model_validate_json(order_json)
         
         # Get trades
-        with IBKRClient(host=IBKR_HOST, port=IBKR_PORT) as client:
+        with IBKRClient(host=IBKR_HOST, port=IBKR_PORT, strict_mode=is_strict_mode()) as client:
             trades = client.get_trades(order.order_id)
         
         logger.info(f"Retrieved {len(trades)} trade(s)")
@@ -729,7 +885,7 @@ def get_portfolio_task(**context):
         task_instance = context['task_instance']
         
         # Get portfolio
-        with IBKRClient(host=IBKR_HOST, port=IBKR_PORT) as client:
+        with IBKRClient(host=IBKR_HOST, port=IBKR_PORT, strict_mode=is_strict_mode()) as client:
             portfolio = client.get_portfolio()
         
         logger.info(f"Portfolio: {portfolio.position_count} positions")

@@ -12,9 +12,12 @@ from backend.models.symbol import Symbol
 from backend.models.decision import Decision
 from backend.models.chart import Chart
 from backend.models.llm_analysis import LLMAnalysis
+from backend.models.prompt import PromptTemplate, PromptPerformance
+from backend.models.trading_signal import TradingSignal
+from backend.models.lineage import LineageRecord
 from backend.models.artifact import Artifact
 from backend.models.workflow_symbol import WorkflowSymbol
-from backend.models.workflow import Workflow
+from backend.models.workflow import Workflow, WorkflowExecution
 
 __all__ = [
     "Base",
@@ -37,4 +40,9 @@ __all__ = [
     "Artifact",
     "WorkflowSymbol",
     "Workflow",
+    "WorkflowExecution",
+    "PromptTemplate",
+    "PromptPerformance",
+    "TradingSignal",
+    "LineageRecord",
 ]

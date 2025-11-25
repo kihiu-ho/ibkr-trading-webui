@@ -1,5 +1,5 @@
 """Indicator database models."""
-from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, Table, ARRAY
+from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, Table
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from backend.core.database import Base
@@ -39,7 +39,7 @@ class IndicatorChart(Base):
     id = Column(Integer, primary_key=True, index=True)
     strategy_id = Column(Integer, ForeignKey("strategies.id", ondelete="CASCADE"))
     symbol = Column(String(50), nullable=False)
-    indicator_ids = Column(ARRAY(Integer), nullable=False)  # Array of indicator IDs
+    indicator_ids = Column(JSON, nullable=False)  # List of indicator IDs
     period = Column(Integer, nullable=False)  # Number of data points used
     frequency = Column(String(10), nullable=False)  # Data frequency used
     chart_url_jpeg = Column(String(500))  # MinIO URL for JPEG chart
@@ -50,4 +50,3 @@ class IndicatorChart(Base):
     
     # Relationships
     # strategy = relationship("Strategy")  # Removed - strategies feature deprecated
-

@@ -86,7 +86,8 @@ class PositionManager:
             
             position.quantity = new_quantity
             position.average_cost = new_avg_price
-            # updated_at is auto-managed by SQLAlchemy
+            position.is_closed = False
+            position.closed_at = None
             
             logger.info(
                 f"Updated position: {order.conid} from {old_quantity} to {new_quantity} "
@@ -96,9 +97,12 @@ class PositionManager:
             # Create new position
             position = Position(
                 conid=order.conid,
+                strategy_id=order.strategy_id,
+                symbol=getattr(order, "symbol", None),
                 quantity=order.filled_quantity,
                 average_cost=order.filled_price,
-                current_price=order.filled_price
+                current_price=order.filled_price,
+                is_closed=False
             )
             self.db.add(position)
             logger.info(
@@ -137,10 +141,14 @@ class PositionManager:
             f"realized P&L=${realized_pnl:.2f}"
         )
         
-        # Position is closed if quantity is zero (no need to set is_closed as it's not in model)
         if position.quantity <= 0:
+            position.quantity = 0
+            position.is_closed = True
+            position.closed_at = datetime.now()
             logger.info(f"Position closed: {order.conid}")
-        
+        else:
+            position.is_closed = False
+            
         self.db.commit()
         self.db.refresh(position)
         
@@ -164,6 +172,8 @@ class PositionManager:
                     )
                 else:
                     position.unrealized_pnl = 0
+                    position.is_closed = True
+                    position.closed_at = position.closed_at or datetime.now()
                 
                 self.db.commit()
                 
@@ -188,7 +198,8 @@ class PositionManager:
     
     async def get_all_positions(
         self,
-        include_closed: bool = False
+        include_closed: bool = False,
+        strategy_id: Optional[int] = None,
     ) -> List[Position]:
         """
         Get all positions.
@@ -201,12 +212,15 @@ class PositionManager:
         """
         try:
             query = self.db.query(Position)
-            
-            # Note: strategy_id filtering removed as Position model doesn't have strategy_id
-            
+            filters = []
+            if strategy_id is not None:
+                filters.append(Position.strategy_id == strategy_id)
             if not include_closed:
-                # Filter out closed positions (quantity == 0)
-                query = query.filter(Position.quantity != 0)
+                filters.append(Position.is_closed.is_(False))
+            if filters:
+                query = query.filter(*filters)
+            else:
+                query = query.filter(True)
             
             positions = query.order_by(Position.updated_at.desc()).all()
             
@@ -225,9 +239,6 @@ class PositionManager:
         """Get a specific position."""
         try:
             query = self.db.query(Position).filter(Position.conid == conid)
-            
-            # Note: strategy_id filtering removed as Position model doesn't have strategy_id
-            
             return query.first()
         except Exception as e:
             logger.error(f"Error getting position for {conid}: {str(e)}", exc_info=True)
@@ -436,4 +447,3 @@ class PositionManager:
 def get_position_manager(db: Session) -> PositionManager:
     """Factory function for PositionManager."""
     return PositionManager(db)
-

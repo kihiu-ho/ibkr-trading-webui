@@ -46,13 +46,42 @@ CREATE TABLE IF NOT EXISTS strategy_codes (
     PRIMARY KEY (strategy_id, code_id)
 );
 
--- Workflow symbol multi-workflow association table
-CREATE TABLE IF NOT EXISTS workflow_symbol_workflows (
+-- Workflow symbols table
+CREATE TABLE IF NOT EXISTS workflow_symbols (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(10) NOT NULL UNIQUE,
+    name VARCHAR(100),
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    priority INTEGER NOT NULL DEFAULT 0,
+    workflow_type VARCHAR(50) DEFAULT 'trading_signal',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_symbols_enabled ON workflow_symbols(enabled);
+CREATE INDEX IF NOT EXISTS idx_workflow_symbols_priority ON workflow_symbols(priority DESC);
+
+-- Workflow-specific scheduling association table
+CREATE TABLE IF NOT EXISTS symbol_workflow_links (
+    id SERIAL PRIMARY KEY,
     workflow_symbol_id INTEGER NOT NULL REFERENCES workflow_symbols(id) ON DELETE CASCADE,
     workflow_id INTEGER NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    priority INTEGER NOT NULL DEFAULT 0,
+    timezone VARCHAR(64) NOT NULL DEFAULT 'America/New_York',
+    session_start TIME,
+    session_end TIME,
+    allow_weekend BOOLEAN NOT NULL DEFAULT FALSE,
+    config JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (workflow_symbol_id, workflow_id)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_symbol_workflow_link_pair
+    ON symbol_workflow_links (workflow_symbol_id, workflow_id);
+
+CREATE INDEX IF NOT EXISTS idx_symbol_workflow_links_symbol_priority
+    ON symbol_workflow_links (workflow_symbol_id, priority);
 
 -- Indicators table for technical indicator configurations
 CREATE TABLE IF NOT EXISTS indicators (

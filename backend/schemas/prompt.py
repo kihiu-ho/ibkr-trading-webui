@@ -9,16 +9,21 @@ from pydantic import BaseModel, Field, field_validator
 # Base schemas
 class PromptTemplateBase(BaseModel):
     """Base schema for prompt template."""
+
     name: str = Field(..., min_length=1, max_length=255, description="Template name")
     description: Optional[str] = Field(None, description="Template description")
-    prompt_text: str = Field(..., min_length=1, description="Jinja2 template text")
+    template_content: str = Field(..., min_length=1, description="Jinja2 template text")
     template_type: str = Field(default="analysis", description="Template type: analysis, consolidation, decision, system_message")
     language: str = Field(default="en", max_length=5, description="Language code: en, zh")
     strategy_id: Optional[int] = Field(None, description="Strategy ID for strategy-specific prompts (NULL for global)")
     is_active: bool = Field(default=True, description="Whether template is active")
+    is_global: bool = Field(default=True, description="Whether template applies globally or to a strategy")
     is_default: bool = Field(default=False, description="Whether this is the default template for its type")
     tags: Optional[List[str]] = Field(None, description="Tags for categorization")
     notes: Optional[str] = Field(None, description="Additional notes")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class PromptTemplateCreate(PromptTemplateBase):
@@ -46,11 +51,12 @@ class PromptTemplateUpdate(BaseModel):
     """Schema for updating an existing prompt template."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
-    prompt_text: Optional[str] = Field(None, min_length=1)
+    template_content: Optional[str] = Field(None, min_length=1)
     template_type: Optional[str] = None
     language: Optional[str] = None
     strategy_id: Optional[int] = None
     is_active: Optional[bool] = None
+    is_global: Optional[bool] = None
     is_default: Optional[bool] = None
     tags: Optional[List[str]] = None
     notes: Optional[str] = None
@@ -58,14 +64,17 @@ class PromptTemplateUpdate(BaseModel):
 
 class PromptTemplateResponse(PromptTemplateBase):
     """Schema for prompt template responses."""
+
     id: int
-    template_version: int
+    version: int = Field(..., alias="template_version")
     created_by: Optional[str]
     created_at: datetime
     updated_at: Optional[datetime]
-    
+
     class Config:
         from_attributes = True
+        orm_mode = True
+        allow_population_by_field_name = True
 
 
 class PromptTemplateListResponse(BaseModel):
@@ -209,4 +218,3 @@ class SignalOutcomeUpdate(BaseModel):
         if v not in allowed:
             raise ValueError(f"outcome must be one of: {', '.join(allowed)}")
         return v
-

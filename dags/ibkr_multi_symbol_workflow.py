@@ -81,8 +81,8 @@ def get_enabled_symbols() -> List[str]:
     return ['TSLA', 'NVDA']
 
 SYMBOLS = get_enabled_symbols()  # NASDAQ symbols to process
-IBKR_HOST = "gateway"  # Docker service name
-IBKR_PORT = 4002  # Paper trading port
+IBKR_HOST = getattr(config, 'ibkr_host', 'ibkr-gateway')
+IBKR_PORT = getattr(config, 'ibkr_port', 4002)
 POSITION_SIZE = 10  # Number of shares per symbol
 LLM_PROVIDER = config.llm_provider
 LLM_MODEL = config.llm_model
@@ -787,4 +787,3 @@ with DAG(
     for symbol_group in symbol_groups.values():
         symbol_group >> get_portfolio
     get_portfolio >> log_to_mlflow
-

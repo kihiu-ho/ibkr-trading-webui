@@ -189,9 +189,13 @@ LLM_PROVIDER = "openai"  # or "anthropic"
 
 ### IBKR Connection
 ```python
-IBKR_HOST = "gateway"  # Docker service name
-IBKR_PORT = 4002  # Paper trading (4001 for live)
+IBKR_HOST = os.getenv("IBKR_HOST", "ibkr-gateway")  # Service name inside Docker; override for remote hosts
+IBKR_PORT = int(os.getenv("IBKR_PORT", 4002))  # 4002 = paper trading, 4001 = live
 ```
+
+### Strict Mode Toggle
+- `IBKR_STRICT_MODE=true` (default whenever `ENVIRONMENT` is not `development`/`test`) forces the workflow to import `ib_insync`, connect to the paper gateway (port 4002), and error out instead of falling back to mock data.
+- Set `IBKR_STRICT_MODE=false` for local experiments that should keep the synthetic market data/order paths even if `ib_insync` is missing.
 
 ## 📈 MLflow Tracking
 

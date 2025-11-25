@@ -20,6 +20,7 @@ from backend.api import (
     market_data_cache,
     orders,
     positions,
+    prompts,
     strategies,
     workflow_symbols,
     workflows,
@@ -67,6 +68,7 @@ app.include_router(chart_images.router, prefix="/api/artifacts", tags=["artifact
 app.include_router(workflow_symbols.router, tags=["workflow-symbols"])
 app.include_router(workflows.router)
 app.include_router(strategies.router)
+app.include_router(prompts.router)
 
 # Frontend routes
 app.include_router(frontend.router, tags=["frontend"])

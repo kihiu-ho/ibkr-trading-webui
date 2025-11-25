@@ -17,6 +17,10 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
 
+# Python Environment
+- Always run `source venv/bin/activate` before executing Python, pytest, or airflow commands so tooling uses the pinned dependencies under `venv/`.
+- If you open a new shell, reactivate the virtualenv before running scripts or tests.
+
 # Project Folder Structure
 
 This document defines the standard folder structure for the IBKR Trading WebUI project. All files should be organized according to this structure.

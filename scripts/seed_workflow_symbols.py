@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from sqlalchemy.orm import Session
 from backend.core.database import SessionLocal, engine
 from backend.models import Base, WorkflowSymbol
+from backend.models.workflow import Workflow
+from backend.models.workflow_symbol import SymbolWorkflowLink
 
 
 def seed_symbols():
@@ -31,7 +33,6 @@ def seed_symbols():
                 'enabled': True,
                 'priority': 10,
                 'workflow_type': 'trading_signal',
-                'config': {'position_size': 10}
             },
             {
                 'symbol': 'NVDA',
@@ -39,12 +40,21 @@ def seed_symbols():
                 'enabled': True,
                 'priority': 9,
                 'workflow_type': 'trading_signal',
-                'config': {'position_size': 10}
             }
         ]
+
+        workflows = db.query(Workflow).filter(Workflow.is_active.is_(True)).order_by(Workflow.id).all()
         
         for data in symbols_data:
             symbol = WorkflowSymbol(**data)
+            if workflows:
+                link = SymbolWorkflowLink(
+                    workflow_id=workflows[0].id,
+                    priority=0,
+                    timezone="America/New_York",
+                    is_active=True,
+                )
+                symbol.workflow_links.append(link)
             db.add(symbol)
             print(f"✅ Added symbol: {data['symbol']} - {data['name']}")
         

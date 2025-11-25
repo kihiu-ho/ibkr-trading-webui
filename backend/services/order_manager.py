@@ -16,9 +16,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from backend.models.order import Order
+from backend.models.trading_signal import TradingSignal
+from backend.models.strategy import Strategy
 from backend.services.ibkr_service import IBKRService
-
-# Note: TradingSignal and Strategy models removed - signals now generated via Airflow workflows
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,8 @@ class OrderManager:
     
     async def create_order_from_signal(
         self,
-        signal: Any,  # TradingSignal model removed - using dict or Airflow context
-        strategy: Any,  # Strategy model removed - using dict or Airflow context
+        signal: TradingSignal,
+        strategy: Strategy,
         order_type: str = "LMT",
         tif: str = "DAY",
         quantity: Optional[int] = None,
@@ -484,4 +484,3 @@ class OrderManager:
 def get_order_manager(db: Session) -> OrderManager:
     """Factory function for OrderManager."""
     return OrderManager(db)
-

@@ -8,24 +8,35 @@ from decimal import Decimal
 import asyncio
 
 try:
+    import ib_insync as ib_insync_module
     from ib_insync import IB, Stock, MarketOrder, LimitOrder, util
     IB_AVAILABLE = True
+    IB_VERSION = getattr(ib_insync_module, "__version__", "unknown")
 except ImportError:
     IB_AVAILABLE = False
+    IB_VERSION = None
     logging.warning("ib_insync not installed. IBKR integration will be mocked.")
 
 from models.market_data import MarketData, OHLCVBar
 from models.order import Order, OrderType, OrderSide, OrderStatus
 from models.trade import Trade, TradeExecution
 from models.portfolio import Portfolio, Position
+from utils.config import config as workflow_config
 
 logger = logging.getLogger(__name__)
+DEFAULT_STRICT_MODE = getattr(workflow_config, 'ibkr_strict_mode', False) if workflow_config else False
 
 
 class IBKRClient:
     """Client for IBKR Gateway integration"""
     
-    def __init__(self, host: str = "127.0.0.1", port: int = 4001, client_id: int = 1):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 4001,
+        client_id: int = 1,
+        strict_mode: Optional[bool] = None
+    ):
         """
         Initialize IBKR client
         
@@ -33,33 +44,53 @@ class IBKRClient:
             host: IBKR Gateway host
             port: IBKR Gateway port (4001 for live, 4002 for paper)
             client_id: Client ID for connection
+            strict_mode: When true, missing dependencies or connection failures raise immediately
         """
         self.host = host
         self.port = port
         self.client_id = client_id
         self.ib: Optional[IB] = None
         self.connected = False
+        self.strict_mode = DEFAULT_STRICT_MODE if strict_mode is None else strict_mode
+        self.runtime_metadata = {
+            'strict_mode': self.strict_mode,
+            'gateway_host': self.host,
+            'gateway_port': self.port,
+            'ib_insync_available': IB_AVAILABLE,
+            'ib_insync_version': IB_VERSION,
+        }
         
         if not IB_AVAILABLE:
             logger.warning("Running in MOCK mode - ib_insync not available")
     
     def connect(self):
         """Connect to IBKR Gateway"""
+        self._ensure_dependency_available()
         if not IB_AVAILABLE:
-            logger.info("MOCK: Simulating IBKR connection")
+            logger.info("MOCK: Simulating IBKR connection (ib_insync missing)")
             self.connected = True
+            self.runtime_metadata['connection_mode'] = 'mock'
             return
         
         try:
             self.ib = IB()
             self.ib.connect(self.host, self.port, clientId=self.client_id)
             self.connected = True
+            self.runtime_metadata['connection_mode'] = 'ibkr'
             logger.info(f"Connected to IBKR Gateway at {self.host}:{self.port}")
+            if self.strict_mode:
+                logger.info("Strict mode active - ib_insync version %s", IB_VERSION or "unknown")
         except Exception as e:
             logger.warning(f"Failed to connect to IBKR Gateway at {self.host}:{self.port}: {e}")
             logger.info("Falling back to MOCK mode")
+            if self.strict_mode:
+                raise RuntimeError(
+                    f"Strict mode IBKR connection failed ({self.host}:{self.port}). "
+                    "Install and configure ib_insync / IB Gateway before retrying."
+                ) from e
             self.connected = True  # Enable mock mode
             self.ib = None  # Don't use real IB connection
+            self.runtime_metadata['connection_mode'] = 'mock'
     
     def disconnect(self):
         """Disconnect from IBKR Gateway"""
@@ -429,3 +460,14 @@ class IBKRClient:
         """Context manager exit"""
         self.disconnect()
 
+    def _ensure_dependency_available(self) -> None:
+        """Fail fast in strict mode when ib_insync is missing."""
+        if self.strict_mode and not IB_AVAILABLE:
+            raise RuntimeError(
+                "IBKR strict mode requires ib_insync to be installed inside the Airflow runtime. "
+                "Install it via airflow/requirements-airflow.txt or disable strict mode for development."
+            )
+
+    def get_metadata(self) -> dict:
+        """Return runtime metadata for logging/telemetry."""
+        return {**self.runtime_metadata, 'connected': self.connected}

@@ -9,13 +9,16 @@
         <div>
             <p class="text-sm uppercase tracking-widest text-blue-600 font-semibold">Workflow Routing</p>
             <h2 class="text-3xl font-bold text-gray-900 mt-1">Workflow Symbols</h2>
-            <p class="text-gray-600 mt-2">Associate tradable symbols with one or more Airflow workflows and capture optional execution preferences.</p>
+            <p class="text-gray-600 mt-2">Associate tradable symbols with one or more Airflow workflows and capture
+                optional execution preferences.</p>
         </div>
         <div class="flex flex-wrap gap-3">
-            <button @click="loadSymbols" class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">
+            <button @click="loadSymbols"
+                class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">
                 <i class="fa fa-sync mr-2"></i> Refresh
             </button>
-            <button @click="openModal()" class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700">
+            <button @click="openModal()"
+                class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700">
                 <i class="fa fa-plus mr-2"></i> Add Symbol
             </button>
         </div>
@@ -41,7 +44,8 @@
     </div>
 
     <div class="bg-white rounded-xl shadow border border-gray-100">
-        <div class="px-6 py-4 border-b border-gray-200 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div
+            class="px-6 py-4 border-b border-gray-200 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div class="flex flex-wrap gap-3">
                 <label class="flex items-center gap-2 text-sm text-gray-600">
                     <span>Status</span>
@@ -70,7 +74,8 @@
                 </label>
             </div>
             <div class="relative w-full md:w-72">
-                <input type="search" x-model="filters.search" placeholder="Search by symbol or workflow..." class="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
+                <input type="search" x-model="filters.search" placeholder="Search by symbol or workflow..."
+                    class="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
                 <i class="fa fa-search absolute left-3 top-2.5 text-gray-400"></i>
             </div>
         </div>
@@ -108,12 +113,18 @@
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Symbol</th>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Primary Workflow</th>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Workflows</th>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                        <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Symbol</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Primary Workflow</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Workflows</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Priority</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Status</th>
+                        <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Actions</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
@@ -124,21 +135,49 @@
                                 <div class="text-xs text-gray-500" x-text="symbol.name || '—'"></div>
                             </td>
                             <td class="px-6 py-4">
-                                <div class="text-sm text-gray-900" x-text="symbol.workflow_name || symbol.workflow_type"></div>
-                                <div class="text-xs text-gray-500" x-text="symbol.workflow_id ? `ID: ${symbol.workflow_id}` : 'No primary workflow'"></div>
+                                <template x-if="symbol.workflows && symbol.workflows.length">
+                                    <div>
+                                        <div class="text-sm font-semibold text-gray-900"
+                                            x-text="symbol.workflows[0].workflow_name || symbol.workflows[0].workflow_id"></div>
+                                        <div class="text-xs text-gray-500"
+                                            x-text="symbol.workflows[0].timezone || 'America/New_York'"></div>
+                                        <div class="text-xs text-gray-500" x-show="symbol.workflows[0].session_start && symbol.workflows[0].session_end"
+                                            x-text="`${symbol.workflows[0].session_start} - ${symbol.workflows[0].session_end}`"></div>
+                                    </div>
+                                </template>
+                                <template x-if="!symbol.workflows || symbol.workflows.length === 0">
+                                    <div class="text-xs text-gray-500">No workflows assigned</div>
+                                </template>
                             </td>
                             <td class="px-6 py-4 text-sm text-gray-900">
                                 <template x-if="symbol.workflows && symbol.workflows.length">
-                                    <div class="flex flex-wrap gap-2">
-                                        <template x-for="workflow in symbol.workflows" :key="workflow.id">
-                                            <span class="px-3 py-1 rounded-full text-xs font-semibold border" :class="workflow.is_active ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-gray-100 border-gray-200 text-gray-600'">
-                                                <span x-text="workflow.name"></span>
-                                            </span>
+                                    <div class="flex flex-wrap gap-3">
+                                        <template x-for="workflow in symbol.workflows" :key="workflow.link_id || `${symbol.id}-${workflow.workflow_id}`">
+                                            <div class="px-3 py-2 rounded-lg border text-xs space-y-1"
+                                                :class="workflow.is_active ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-gray-50 border-gray-200 text-gray-600'">
+                                                <div class="flex items-center gap-1 font-semibold">
+                                                    <span x-text="workflow.workflow_name || `Workflow ${workflow.workflow_id}`"></span>
+                                                    <span class="text-[10px] font-normal px-1.5 py-0.5 rounded-full"
+                                                        :class="workflow.workflow_is_active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'">
+                                                        Airflow <span x-text="workflow.workflow_is_active ? 'Enabled' : 'Paused'"></span>
+                                                    </span>
+                                                </div>
+                                                <div class="text-[11px] text-gray-600" x-text="workflow.timezone"></div>
+                                                <div class="text-[11px] text-gray-600"
+                                                    x-show="workflow.session_start && workflow.session_end"
+                                                    x-text="`${workflow.session_start} - ${workflow.session_end}`"></div>
+                                                <div class="text-[11px] font-semibold"
+                                                    :class="workflow.allow_weekend ? 'text-indigo-600' : 'text-gray-400'">
+                                                    <i class="fa fa-calendar-week mr-1"></i>
+                                                    <span x-text="workflow.allow_weekend ? 'Weekends Allowed' : 'Weekdays Only'"></span>
+                                                </div>
+                                            </div>
                                         </template>
                                     </div>
                                 </template>
                                 <template x-if="!symbol.workflows || symbol.workflows.length === 0">
-                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700">
+                                    <span
+                                        class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700">
                                         <i class="fa fa-exclamation-triangle mr-1"></i>
                                         Unassigned
                                     </span>
@@ -148,23 +187,30 @@
                                 <div class="flex items-center gap-2">
                                     <span class="text-sm font-medium text-gray-900" x-text="symbol.priority"></span>
                                     <div class="flex flex-col text-gray-400">
-                                        <button @click="changePriority(symbol, 1)" class="hover:text-blue-600"><i class="fa fa-chevron-up"></i></button>
-                                        <button @click="changePriority(symbol, -1)" class="hover:text-blue-600"><i class="fa fa-chevron-down"></i></button>
+                                        <button @click="changePriority(symbol, 1)" class="hover:text-blue-600"><i
+                                                class="fa fa-chevron-up"></i></button>
+                                        <button @click="changePriority(symbol, -1)" class="hover:text-blue-600"><i
+                                                class="fa fa-chevron-down"></i></button>
                                     </div>
                                 </div>
                             </td>
                             <td class="px-6 py-4">
-                                <span class="px-2 py-1 inline-flex text-xs font-semibold rounded-full" :class="symbol.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'" x-text="symbol.enabled ? 'Enabled' : 'Disabled'"></span>
+                                <span class="px-2 py-1 inline-flex text-xs font-semibold rounded-full"
+                                    :class="symbol.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'"
+                                    x-text="symbol.enabled ? 'Enabled' : 'Disabled'"></span>
                             </td>
                             <td class="px-6 py-4 text-right text-sm font-medium">
                                 <div class="flex justify-end gap-2">
-                                    <button @click="toggleSymbol(symbol)" class="text-gray-500 hover:text-blue-600" :title="symbol.enabled ? 'Disable' : 'Enable'">
+                                    <button @click="toggleSymbol(symbol)" class="text-gray-500 hover:text-blue-600"
+                                        :title="symbol.enabled ? 'Disable' : 'Enable'">
                                         <i :class="symbol.enabled ? 'fa fa-pause-circle' : 'fa fa-play-circle'"></i>
                                     </button>
-                                    <button @click="openModal(symbol)" class="text-gray-500 hover:text-blue-600" title="Edit">
+                                    <button @click="openModal(symbol)" class="text-gray-500 hover:text-blue-600"
+                                        title="Edit">
                                         <i class="fa fa-edit"></i>
                                     </button>
-                                    <button @click="deleteSymbol(symbol)" class="text-gray-500 hover:text-red-600" title="Delete">
+                                    <button @click="deleteSymbol(symbol)" class="text-gray-500 hover:text-red-600"
+                                        title="Delete">
                                         <i class="fa fa-trash"></i>
                                     </button>
                                 </div>
@@ -177,20 +223,25 @@
     </div>
 
     <!-- Modal -->
-    <div x-show="showModal" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center">
+    <div x-show="showModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center">
         <div class="fixed inset-0 bg-gray-900/50" @click="closeModal"></div>
-        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div
+            class="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl mx-4 max-h-[90vh] flex flex-col overflow-hidden">
+            <div
+                class="px-6 py-4 border-b border-gray-200 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <p class="text-sm uppercase tracking-wide text-gray-500" x-text="editingSymbol ? 'Edit Symbol' : 'Add Symbol'"></p>
+                    <p class="text-sm uppercase tracking-wide text-gray-500"
+                        x-text="editingSymbol ? 'Edit Symbol' : 'Add Symbol'"></p>
                     <h3 class="text-2xl font-semibold text-gray-900" x-text="form.symbol || 'New Workflow Symbol'"></h3>
                     <div class="flex items-center gap-2 mt-3 text-xs text-gray-500">
                         <template x-for="step in [1,2,3]" :key="step">
                             <div class="flex items-center gap-1">
-                                <div class="h-2.5 w-2.5 rounded-full" :class="modalStep >= step ? 'bg-blue-600' : 'bg-gray-300'"></div>
+                                <div class="h-2.5 w-2.5 rounded-full"
+                                    :class="modalStep >= step ? 'bg-blue-600' : 'bg-gray-300'"></div>
                                 <span class="tracking-widest" x-text="['Details','Workflows','Review'][step-1]"></span>
                                 <template x-if="step < 3">
-                                    <div class="w-6 h-0.5" :class="modalStep > step ? 'bg-blue-500' : 'bg-gray-200'"></div>
+                                    <div class="w-6 h-0.5" :class="modalStep > step ? 'bg-blue-500' : 'bg-gray-200'">
+                                    </div>
                                 </template>
                             </div>
                         </template>
@@ -200,23 +251,29 @@
                     <i class="fa fa-times text-xl"></i>
                 </button>
             </div>
-            <form @submit.prevent="saveSymbol">
-                <div class="p-6 space-y-6">
+            <form @submit.prevent="saveSymbol" class="flex flex-col flex-1 overflow-hidden">
+                <div class="p-6 space-y-6 overflow-y-auto flex-1">
                     <div x-show="modalStep === 1" class="space-y-6">
-                        <p class="text-sm text-gray-500">Capture the core symbol metadata and workflow routing before assigning workflows.</p>
+                        <p class="text-sm text-gray-500">Capture the core symbol metadata and workflow routing before
+                            assigning workflows.</p>
                         <div class="grid gap-6 md:grid-cols-2">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Symbol *</label>
-                                <input type="text" x-model="form.symbol" :disabled="!!editingSymbol" class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 uppercase" placeholder="TSLA" required pattern="[A-Za-z]{1,10}">
+                                <input type="text" x-model="form.symbol" :disabled="!!editingSymbol"
+                                    class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 uppercase"
+                                    placeholder="TSLA" required pattern="[A-Za-z]{1,10}">
                                 <p class="text-xs text-gray-500 mt-1">Use IBKR ticker (1-10 letters).</p>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Display Name</label>
-                                <input type="text" x-model="form.name" class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="Tesla Inc.">
+                                <input type="text" x-model="form.name"
+                                    class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Tesla Inc.">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Workflow Type</label>
-                                <select x-model="form.workflow_type" class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                <select x-model="form.workflow_type"
+                                    class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                                     <option value="trading_signal">Trading Signal</option>
                                     <option value="autogen_multi_agent">AutoGen</option>
                                     <option value="custom">Custom</option>
@@ -224,58 +281,202 @@
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Priority</label>
-                                <input type="number" x-model.number="form.priority" class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                <input type="number" x-model.number="form.priority"
+                                    class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                                 <p class="text-xs text-gray-500 mt-1">Higher priority runs first.</p>
                             </div>
                             <div class="flex items-center">
-                                <input id="enabledSymbolToggle" type="checkbox" class="h-4 w-4 text-blue-600 border-gray-300 rounded" x-model="form.enabled">
-                                <label for="enabledSymbolToggle" class="ml-2 block text-sm text-gray-700">Symbol enabled</label>
+                                <input id="enabledSymbolToggle" type="checkbox"
+                                    class="h-4 w-4 text-blue-600 border-gray-300 rounded" x-model="form.enabled">
+                                <label for="enabledSymbolToggle" class="ml-2 block text-sm text-gray-700">Symbol
+                                    enabled</label>
                             </div>
                         </div>
                     </div>
                     <div x-show="modalStep === 2" class="space-y-5">
-                        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <h4 class="text-lg font-semibold text-gray-900">Select workflows</h4>
-                                <p class="text-sm text-gray-500">Choose one or more Airflow workflows that should process this symbol.</p>
-                            </div>
-                            <div class="flex items-center gap-2 text-sm text-gray-600">
-                                <span>Status</span>
-                                <select class="border-gray-300 rounded-md text-sm" x-model="workflowFilters.status">
-                                    <option value="all">All</option>
-                                    <option value="active">Active</option>
-                                    <option value="inactive">Inactive</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="relative flex-1">
-                            <input type="search" x-model="workflowFilters.search" placeholder="Search workflows..." class="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
-                            <i class="fa fa-search absolute left-3 top-2.5 text-gray-400"></i>
-                        </div>
-                        <div class="space-y-3 max-h-72 overflow-y-auto pr-1" x-show="filteredWorkflows.length">
-                            <template x-for="workflow in filteredWorkflows" :key="workflow.id">
-                                <button type="button" class="w-full border rounded-xl text-left p-4 transition" :class="selectedWorkflowIds.has(workflow.id) ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'" @click="toggleWorkflow(workflow.id)">
-                                    <div class="flex items-center justify-between">
-                                        <div>
-                                            <p class="text-sm font-semibold text-gray-900" x-text="workflow.name"></p>
-                                            <p class="text-xs text-gray-500" x-text="workflow.dag_id || 'Airflow DAG'" ></p>
-                                        </div>
-                                        <span class="px-2 py-0.5 rounded-full text-xs font-semibold" :class="workflow.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-700'" x-text="workflow.is_active ? 'Active' : 'Inactive'"></span>
+                        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[600px]">
+                            <!-- Left Panel: Available Workflows -->
+                            <div class="lg:col-span-4 flex flex-col border-r border-gray-200 pr-4">
+                                <h4 class="text-sm font-semibold text-gray-700 mb-3">Available Workflows</h4>
+                                <div class="relative mb-3">
+                                    <input type="search" x-model="workflowFilters.search"
+                                        placeholder="Search workflows..."
+                                        class="w-full border border-gray-300 rounded-md pl-9 pr-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
+                                    <i class="fa fa-search absolute left-3 top-2.5 text-gray-400"></i>
+                                </div>
+                                <div class="flex-1 overflow-y-auto space-y-2 pr-2">
+                                    <template x-for="workflow in filteredWorkflows" :key="workflow.id">
+                                        <button type="button"
+                                            class="w-full text-left p-3 rounded-lg border transition group"
+                                            :class="isWorkflowSelected(workflow.id) ? 'bg-gray-50 border-gray-200 opacity-50 cursor-not-allowed' : 'bg-white border-gray-200 hover:border-blue-400 hover:shadow-sm'"
+                                            @click="addWorkflow(workflow)" :disabled="isWorkflowSelected(workflow.id)">
+                                            <div class="flex items-center justify-between">
+                                                <span class="text-sm font-medium text-gray-900"
+                                                    x-text="workflow.name"></span>
+                                                <i class="fa fa-plus text-gray-400 group-hover:text-blue-500"
+                                                    x-show="!isWorkflowSelected(workflow.id)"></i>
+                                                <i class="fa fa-check text-green-500"
+                                                    x-show="isWorkflowSelected(workflow.id)"></i>
+                                            </div>
+                                            <div class="text-xs text-gray-500 mt-1 truncate" x-text="workflow.dag_id">
+                                            </div>
+                                        </button>
+                                    </template>
+                                    <div x-show="filteredWorkflows.length === 0"
+                                        class="text-center py-8 text-gray-500 text-sm">
+                                        No workflows found.
                                     </div>
-                                </button>
-                            </template>
-                        </div>
-                        <div class="border border-dashed border-gray-200 rounded-xl text-center py-6 text-sm text-gray-500" x-show="!filteredWorkflows.length">
-                            No workflows match the current filters.
-                        </div>
-                        <div class="text-sm" x-show="selectedWorkflowIds.size">
-                            <span class="font-semibold" x-text="selectedWorkflowIds.size"></span> workflow(s) selected.
+                                </div>
+                            </div>
+
+                            <!-- Right Panel: Configured Workflows -->
+                            <div class="lg:col-span-8 flex flex-col pl-2">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h4 class="text-sm font-semibold text-gray-700">Configured Workflows</h4>
+                                    <span class="text-xs text-gray-500"
+                                        x-text="`${selectedWorkflows.length} selected`"></span>
+                                </div>
+
+                                <div class="flex-1 overflow-y-auto space-y-4 pr-2 pb-2">
+                                    <template x-for="(config, index) in selectedWorkflows" :key="config.workflow_id">
+                                        <div
+                                            class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                                            <!-- Header -->
+                                            <div
+                                                class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                                                <div class="flex items-center gap-3">
+                                                    <span
+                                                        class="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold"
+                                                        x-text="index + 1"></span>
+                                                    <div>
+                                                        <h5 class="text-sm font-bold text-gray-900"
+                                                            x-text="getWorkflowName(config.workflow_id)"></h5>
+                                                        <p class="text-xs text-gray-500"
+                                                            x-text="getWorkflowDagId(config.workflow_id)"></p>
+                                                    </div>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <div class="flex flex-col text-gray-400">
+                                                        <button type="button" class="hover:text-blue-600 disabled:text-gray-300"
+                                                            @click="moveWorkflow(index, -1)" :disabled="index === 0">
+                                                            <i class="fa fa-chevron-up"></i>
+                                                        </button>
+                                                        <button type="button" class="hover:text-blue-600 disabled:text-gray-300"
+                                                            @click="moveWorkflow(index, 1)"
+                                                            :disabled="index === selectedWorkflows.length - 1">
+                                                            <i class="fa fa-chevron-down"></i>
+                                                        </button>
+                                                    </div>
+                                                    <label
+                                                        class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                                                        <input type="checkbox" x-model="config.is_active"
+                                                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                                        <span>Active</span>
+                                                    </label>
+                                                    <button type="button" @click="removeWorkflow(index)"
+                                                        class="text-gray-400 hover:text-red-500 ml-2">
+                                                        <i class="fa fa-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <!-- Body -->
+                                            <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4"
+                                                x-show="config.is_active"
+                                                x-transition:enter="transition ease-out duration-200"
+                                                x-transition:enter-start="opacity-0 -translate-y-2"
+                                                x-transition:enter-end="opacity-100 translate-y-0">
+
+                                                <!-- Timezone -->
+                                                <div class="md:col-span-2">
+                                                    <label
+                                                        class="block text-xs font-medium text-gray-700 mb-1">Timezone</label>
+                                                    <select x-model="config.timezone"
+                                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                                        <option value="America/New_York">America/New_York (EST/EDT)
+                                                        </option>
+                                                        <option value="UTC">UTC</option>
+                                                        <option value="Europe/London">Europe/London</option>
+                                                        <option value="Asia/Tokyo">Asia/Tokyo</option>
+                                                        <option value="Asia/Hong_Kong">Asia/Hong_Kong</option>
+                                                    </select>
+                                                </div>
+
+                                                <!-- Session Start -->
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-700 mb-1">Session
+                                                        Start</label>
+                                                    <input type="time" x-model="config.session_start"
+                                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                                </div>
+
+                                                <!-- Session End -->
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-700 mb-1">Session
+                                                        End</label>
+                                                    <input type="time" x-model="config.session_end"
+                                                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                                </div>
+
+                                                <!-- Options -->
+                                                <div class="md:col-span-2 flex items-center gap-6 pt-2">
+                                                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                                                        <input type="checkbox" x-model="config.allow_weekend"
+                                                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                                        <span>Allow Weekend Execution</span>
+                                                    </label>
+                                                    <div class="text-xs font-semibold text-gray-500">
+                                                        Execution Order
+                                                        <span class="ml-1 inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700"
+                                                            x-text="index + 1"></span>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Config JSON (Advanced) -->
+                                                <div class="md:col-span-2 mt-2">
+                                                    <details class="group">
+                                                        <summary
+                                                            class="text-xs font-medium text-blue-600 cursor-pointer hover:text-blue-800 select-none">
+                                                            Advanced Configuration (JSON)
+                                                        </summary>
+                                                        <div class="mt-2">
+                                                            <textarea x-model="config.config_json"
+                                                                @input="validateJson(config)" rows="3"
+                                                                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 font-mono text-xs"
+                                                                :class="config.json_error ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''"
+                                                                placeholder='{"param": "value"}'></textarea>
+                                                            <p x-show="config.json_error"
+                                                                class="mt-1 text-xs text-red-600"
+                                                                x-text="config.json_error"></p>
+                                                        </div>
+                                                    </details>
+                                                </div>
+                                            </div>
+                                            <div class="p-4 bg-gray-50 text-center text-sm text-gray-500 italic"
+                                                x-show="!config.is_active">
+                                                Workflow is disabled for this symbol.
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <div x-show="selectedWorkflows.length === 0"
+                                        class="border-2 border-dashed border-gray-200 rounded-xl p-10 text-center">
+                                        <i class="fa fa-arrow-left text-gray-300 text-2xl mb-3 block lg:hidden"></i>
+                                        <i
+                                            class="fa fa-arrow-left text-gray-300 text-2xl mb-3 hidden lg:inline-block"></i>
+                                        <p class="text-gray-500 font-medium">No workflows configured</p>
+                                        <p class="text-gray-400 text-sm mt-1">Select workflows from the list to
+                                            configure their schedules.</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div x-show="modalStep === 3" class="space-y-6">
                         <div>
                             <h4 class="text-lg font-semibold text-gray-900">Review &amp; confirm</h4>
-                            <p class="text-sm text-gray-500">Double-check the metadata and workflow coverage before saving.</p>
+                            <p class="text-sm text-gray-500">Double-check the metadata and workflow coverage before
+                                saving.</p>
                         </div>
                         <dl class="grid gap-4 md:grid-cols-2">
                             <div>
@@ -283,45 +484,92 @@
                                 <dd class="text-sm font-semibold text-gray-900" x-text="form.symbol || '—'"></dd>
                             </div>
                             <div>
-                                <dt class="text-xs uppercase text-gray-500 tracking-wider">Priority</dt>
+                                <dt class="text-xs uppercase text-gray-500 tracking-wider">Global Priority</dt>
                                 <dd class="text-sm text-gray-900" x-text="form.priority"></dd>
                             </div>
                             <div>
-                                <dt class="text-xs uppercase text-gray-500 tracking-wider">Status</dt>
+                                <dt class="text-xs uppercase text-gray-500 tracking-wider">Global Status</dt>
                                 <dd class="text-sm text-gray-900" x-text="form.enabled ? 'Enabled' : 'Disabled'"></dd>
                             </div>
                             <div>
-                                <dt class="text-xs uppercase text-gray-500 tracking-wider">Workflows Selected</dt>
-                                <dd class="text-sm text-gray-900" x-text="`${selectedWorkflowIds.size} workflow(s)`"></dd>
+                                <dt class="text-xs uppercase text-gray-500 tracking-wider">Workflows Configured</dt>
+                                <dd class="text-sm text-gray-900" x-text="`${selectedWorkflows.length} workflow(s)`">
+                                </dd>
                             </div>
                         </dl>
                         <div>
-                            <h5 class="text-sm font-semibold text-gray-700 mb-2">Workflow coverage</h5>
-                            <template x-if="selectedWorkflowObjects.length">
-                                <div class="flex flex-wrap gap-2">
-                                    <template x-for="workflow in selectedWorkflowObjects" :key="workflow.id">
-                                        <span class="px-3 py-1 rounded-full text-xs font-semibold border" :class="workflow.is_active ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-gray-100 border-gray-200 text-gray-600'">
-                                            <span x-text="workflow.name"></span>
-                                        </span>
-                                    </template>
-                                </div>
-                            </template>
-                            <p class="text-sm text-rose-600" x-show="!selectedWorkflowObjects.length">Select at least one workflow to continue.</p>
+                            <h5 class="text-sm font-semibold text-gray-700 mb-2">Workflow Configuration Summary</h5>
+                            <div class="border rounded-lg overflow-hidden">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                                Workflow</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                                Schedule</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                                Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        <template x-for="config in selectedWorkflows" :key="config.workflow_id">
+                                            <tr>
+                                                <td class="px-4 py-2 text-sm text-gray-900"
+                                                    x-text="getWorkflowName(config.workflow_id)"></td>
+                                                <td class="px-4 py-2 text-xs text-gray-500">
+                                                    <div x-text="config.timezone || 'America/New_York'"></div>
+                                                    <div x-show="config.session_start && config.session_end">
+                                                        <span x-text="config.session_start"></span> - <span
+                                                            x-text="config.session_end"></span>
+                                                    </div>
+                                                    <div class="text-[11px]"
+                                                        :class="config.allow_weekend ? 'text-indigo-600' : 'text-gray-400'">
+                                                        <span x-text="config.allow_weekend ? 'Weekends allowed' : 'Weekdays only'"></span>
+                                                    </div>
+                                                </td>
+                                                <td class="px-4 py-2">
+                                                    <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                                                        :class="config.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'"
+                                                        x-text="config.is_active ? 'Active' : 'Inactive'"></span>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="text-sm text-rose-600 mt-2" x-show="selectedWorkflows.length === 0">Select at
+                                least one workflow to continue.</p>
+                            <p class="text-sm text-rose-600 mt-2"
+                                x-show="selectedWorkflows.length > 0 && !selectedWorkflows.some((wf) => wf.is_active)">
+                                Activate at least one workflow before saving.</p>
+                            <p class="text-sm text-rose-600 mt-2"
+                                x-show="selectedWorkflows.some((wf) => wf.json_error)">
+                                Resolve JSON configuration errors before saving.</p>
                         </div>
                     </div>
                 </div>
-                <div class="bg-gray-50 px-6 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <button type="button" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50" @click="closeModal">
+                <div
+                    class="bg-gray-50 px-6 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between flex-shrink-0 border-t border-gray-200">
+                    <button type="button"
+                        class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                        @click="closeModal">
                         Cancel
                     </button>
                     <div class="flex gap-3">
-                        <button type="button" x-show="modalStep > 1" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50" @click="goToPreviousStep">
+                        <button type="button" x-show="modalStep > 1"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                            @click="goToPreviousStep">
                             Back
                         </button>
-                        <button type="button" x-show="modalStep < 3" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700" @click="goToNextStep">
+                        <button type="button" x-show="modalStep < 3"
+                            class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                            @click="goToNextStep">
                             Next
                         </button>
-                        <button type="submit" x-show="modalStep === 3" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700" :disabled="saving">
+                        <button type="submit" x-show="modalStep === 3"
+                            class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white"
+                            :class="canSaveSymbol ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-300 cursor-not-allowed'"
+                            :disabled="saving || !canSaveSymbol">
                             <i class="fa fa-save mr-2"></i>
                             <span x-text="saving ? 'Saving…' : (editingSymbol ? 'Update Symbol' : 'Add Symbol')"></span>
                         </button>
@@ -333,303 +581,388 @@
 </div>
 
 <script>
-function workflowSymbols() {
-    return {
-        symbols: [],
-        workflows: [],
-        loading: true,
-        error: null,
-        toast: null,
-        toastTimeout: null,
-        showModal: false,
-        modalStep: 1,
-        editingSymbol: null,
-        saving: false,
-        selectedWorkflowIds: new Set(),
-        filters: {
-            status: 'all',
-            workflow: 'all',
-            coverage: 'all',
-            search: ''
-        },
-        workflowFilters: {
-            search: '',
-            status: 'all'
-        },
-        form: {
-            symbol: '',
-            name: '',
-            priority: 0,
-            enabled: true,
-            workflow_type: 'trading_signal',
-            timezone: 'America/New_York',
-            session_start: '09:30',
-            session_end: '16:00',
-            allow_weekend: false,
-            config: null
-        },
+    function workflowSymbols() {
+        return {
+            symbols: [],
+            workflows: [],
+            loading: true,
+            error: null,
+            toast: null,
+            toastTimeout: null,
+            showModal: false,
+            modalStep: 1,
+            editingSymbol: null,
+            saving: false,
+            selectedWorkflows: [],
+            filters: {
+                status: 'all',
+                workflow: 'all',
+                coverage: 'all',
+                search: ''
+            },
+            workflowFilters: {
+                search: '',
+                status: 'all'
+            },
+            form: {
+                symbol: '',
+                name: '',
+                priority: 0,
+                enabled: true,
+                workflow_type: 'trading_signal'
+            },
 
-        init() {
-            this.loadWorkflows();
-            this.loadSymbols();
-        },
-        get coveredCount() {
-            return this.symbols.filter((symbol) => (symbol.workflows || []).length > 0).length;
-        },
-        get uncoveredCount() {
-            return this.symbols.filter((symbol) => (symbol.workflows || []).length === 0).length;
-        },
-        get uniqueWorkflowCount() {
-            const ids = new Set();
-            this.symbols.forEach((symbol) => {
-                (symbol.workflows || []).forEach((workflow) => ids.add(workflow.id));
-            });
-            return ids.size;
-        },
-        get filteredSymbols() {
-            const term = this.filters.search.trim().toLowerCase();
-            const workflowId = this.filters.workflow === 'all' ? null : Number(this.filters.workflow);
-            return this.symbols.filter((symbol) => {
-                const workflowList = symbol.workflows || [];
-                const hasWorkflows = workflowList.length > 0;
-                const matchesStatus = this.filters.status === 'all'
-                    || (this.filters.status === 'enabled' && symbol.enabled)
-                    || (this.filters.status === 'disabled' && !symbol.enabled);
-                const matchesWorkflow = !workflowId
-                    || workflowList.some((workflow) => workflow.id === workflowId);
-                const matchesCoverage = this.filters.coverage === 'all'
-                    || (this.filters.coverage === 'assigned' && hasWorkflows)
-                    || (this.filters.coverage === 'unassigned' && !hasWorkflows);
-                const matchesTerm = !term
-                    || symbol.symbol.toLowerCase().includes(term)
-                    || (symbol.name || '').toLowerCase().includes(term)
-                    || workflowList.some((workflow) => (workflow.name || '').toLowerCase().includes(term));
-                return matchesStatus && matchesWorkflow && matchesCoverage && matchesTerm;
-            });
-        },
-        get filteredWorkflows() {
-            const term = this.workflowFilters.search.trim().toLowerCase();
-            return this.workflows.filter((workflow) => {
-                const matchesStatus = this.workflowFilters.status === 'all'
-                    || (this.workflowFilters.status === 'active' && workflow.is_active)
-                    || (this.workflowFilters.status === 'inactive' && !workflow.is_active);
-                const matchesTerm = !term || (workflow.name || '').toLowerCase().includes(term);
-                return matchesStatus && matchesTerm;
-            });
-        },
-        get selectedWorkflowObjects() {
-            const lookup = new Map(this.workflows.map((workflow) => [workflow.id, workflow]));
-            return Array.from(this.selectedWorkflowIds)
-                .map((id) => lookup.get(id))
-                .filter(Boolean);
-        },
-        async loadWorkflows() {
-            try {
-                const response = await fetch('/api/workflows');
-                if (!response.ok) throw new Error('Failed to load workflows');
-                this.workflows = await response.json();
-            } catch (error) {
-                this.showToast(error.message, 'error');
-            }
-        },
-        async loadSymbols() {
-            this.loading = true;
-            this.error = null;
-            try {
-                const response = await fetch('/api/workflow-symbols/');
-                if (!response.ok) throw new Error('Failed to fetch symbols');
-                const data = await response.json();
-                this.symbols = data
-                    .map((symbol) => ({
-                        ...symbol,
-                        workflows: symbol.workflows || []
-                    }))
-                    .sort((a, b) => b.priority - a.priority || a.symbol.localeCompare(b.symbol));
-            } catch (err) {
-                this.error = err.message;
-                this.showToast(err.message, 'error');
-            } finally {
-                this.loading = false;
-            }
-        },
-        openModal(symbol = null) {
-            this.modalStep = 1;
-            this.editingSymbol = symbol;
-            if (symbol) {
-                this.form = {
-                    symbol: symbol.symbol,
-                    name: symbol.name || '',
-                    priority: symbol.priority,
-                    enabled: Boolean(symbol.enabled),
-                    workflow_type: symbol.workflow_type || 'trading_signal',
-                    timezone: symbol.timezone || 'America/New_York',
-                    session_start: this.toTimeInput(symbol.session_start) || '09:30',
-                    session_end: this.toTimeInput(symbol.session_end) || '16:00',
-                    allow_weekend: Boolean(symbol.allow_weekend),
-                    config: symbol.config || null
-                };
-                this.selectedWorkflowIds = new Set((symbol.workflows || []).map((workflow) => workflow.id));
-            } else {
-                this.form = {
-                    symbol: '',
-                    name: '',
-                    priority: 0,
-                    enabled: true,
-                    workflow_type: 'trading_signal',
+            init() {
+                this.loadWorkflows();
+                this.loadSymbols();
+            },
+            get coveredCount() {
+                return this.symbols.filter((symbol) => (symbol.workflows || []).length > 0).length;
+            },
+            get uncoveredCount() {
+                return this.symbols.filter((symbol) => (symbol.workflows || []).length === 0).length;
+            },
+            get uniqueWorkflowCount() {
+                const ids = new Set();
+                this.symbols.forEach((symbol) => {
+                    (symbol.workflows || []).forEach((workflow) => ids.add(workflow.workflow_id));
+                });
+                return ids.size;
+            },
+            get canSaveSymbol() {
+                return this.selectedWorkflows.length > 0
+                    && this.selectedWorkflows.some((cfg) => cfg.is_active)
+                    && this.selectedWorkflows.every((cfg) => this.isWorkflowConfigValid(cfg));
+            },
+            isWorkflowConfigValid(config) {
+                const hasStart = Boolean(config.session_start);
+                const hasEnd = Boolean(config.session_end);
+                if (config.json_error) return false;
+                if (hasStart !== hasEnd) return false;
+                if (hasStart && hasEnd && config.session_start >= config.session_end) return false;
+                return true;
+            },
+            get filteredSymbols() {
+                const term = this.filters.search.trim().toLowerCase();
+                const workflowId = this.filters.workflow === 'all' ? null : Number(this.filters.workflow);
+                return this.symbols.filter((symbol) => {
+                    const workflowList = symbol.workflows || [];
+                    const hasWorkflows = workflowList.length > 0;
+                    const matchesStatus = this.filters.status === 'all'
+                        || (this.filters.status === 'enabled' && symbol.enabled)
+                        || (this.filters.status === 'disabled' && !symbol.enabled);
+                    const matchesWorkflow = !workflowId
+                        || workflowList.some((workflow) => workflow.workflow_id === workflowId);
+                    const matchesCoverage = this.filters.coverage === 'all'
+                        || (this.filters.coverage === 'assigned' && hasWorkflows)
+                        || (this.filters.coverage === 'unassigned' && !hasWorkflows);
+                    const matchesTerm = !term
+                        || symbol.symbol.toLowerCase().includes(term)
+                        || (symbol.name || '').toLowerCase().includes(term)
+                        || workflowList.some((workflow) => (workflow.workflow_name || '').toLowerCase().includes(term));
+                    return matchesStatus && matchesWorkflow && matchesCoverage && matchesTerm;
+                });
+            },
+            get filteredWorkflows() {
+                const term = this.workflowFilters.search.trim().toLowerCase();
+                return this.workflows.filter((workflow) => {
+                    const matchesStatus = this.workflowFilters.status === 'all'
+                        || (this.workflowFilters.status === 'active' && workflow.is_active)
+                        || (this.workflowFilters.status === 'inactive' && !workflow.is_active);
+                    const matchesTerm = !term || (workflow.name || '').toLowerCase().includes(term);
+                    return matchesStatus && matchesTerm;
+                });
+            },
+            async loadWorkflows() {
+                try {
+                    const response = await fetch('/api/workflows');
+                    if (!response.ok) throw new Error('Failed to load workflows');
+                    this.workflows = await response.json();
+                } catch (error) {
+                    this.showToast(error.message, 'error');
+                }
+            },
+            async loadSymbols() {
+                this.loading = true;
+                this.error = null;
+                try {
+                    const response = await fetch('/api/workflow-symbols/');
+                    if (!response.ok) throw new Error('Failed to fetch symbols');
+                    const data = await response.json();
+                    this.symbols = data
+                        .map((symbol) => ({
+                            ...symbol,
+                            workflows: (symbol.workflows || []).sort((a, b) => a.priority - b.priority),
+                        }))
+                        .sort((a, b) => b.priority - a.priority || a.symbol.localeCompare(b.symbol));
+                } catch (err) {
+                    this.error = err.message;
+                    this.showToast(err.message, 'error');
+                } finally {
+                    this.loading = false;
+                }
+            },
+            openModal(symbol = null) {
+                this.modalStep = 1;
+                this.editingSymbol = symbol;
+                if (symbol) {
+                    this.form = {
+                        symbol: symbol.symbol,
+                        name: symbol.name || '',
+                        priority: symbol.priority,
+                        enabled: Boolean(symbol.enabled),
+                        workflow_type: symbol.workflow_type || 'trading_signal'
+                    };
+                    this.selectedWorkflows = (symbol.workflows || []).map((workflow) => this.hydrateWorkflowConfig(workflow));
+                } else {
+                    this.form = {
+                        symbol: '',
+                        name: '',
+                        priority: 0,
+                        enabled: true,
+                        workflow_type: 'trading_signal'
+                    };
+                    this.selectedWorkflows = [];
+                }
+                this.recalculatePriorities();
+                this.showModal = true;
+            },
+            closeModal() {
+                this.showModal = false;
+                this.editingSymbol = null;
+                this.modalStep = 1;
+                this.selectedWorkflows = [];
+            },
+            goToNextStep() {
+                if (this.modalStep === 1 && !this.form.symbol) {
+                    this.showToast('Symbol is required', 'error');
+                    return;
+                }
+                if (this.modalStep === 2 && !this.validateSelectedWorkflows()) {
+                    return;
+                }
+                if (this.modalStep < 3) {
+                    this.modalStep += 1;
+                }
+            },
+            goToPreviousStep() {
+                if (this.modalStep > 1) {
+                    this.modalStep -= 1;
+                }
+            },
+            validateSelectedWorkflows() {
+                if (!this.selectedWorkflows.length) {
+                    this.showToast('Select at least one workflow', 'error');
+                    return false;
+                }
+                if (!this.selectedWorkflows.some((cfg) => cfg.is_active)) {
+                    this.showToast('Activate at least one workflow', 'error');
+                    return false;
+                }
+                for (const [index, cfg] of this.selectedWorkflows.entries()) {
+                    if (cfg.json_error) {
+                        this.showToast(`Workflow #${index + 1} has invalid JSON`, 'error');
+                        return false;
+                    }
+                    const hasStart = Boolean(cfg.session_start);
+                    const hasEnd = Boolean(cfg.session_end);
+                    if (hasStart !== hasEnd) {
+                        this.showToast(`Workflow #${index + 1} must include both session start and end`, 'error');
+                        return false;
+                    }
+                    if (hasStart && hasEnd && cfg.session_start >= cfg.session_end) {
+                        this.showToast(`Workflow #${index + 1} has an invalid session window`, 'error');
+                        return false;
+                    }
+                }
+                return true;
+            },
+            buildWorkflowConfig(workflowId) {
+                return {
+                    workflow_id: workflowId,
+                    is_active: true,
                     timezone: 'America/New_York',
-                    session_start: '09:30',
-                    session_end: '16:00',
+                    session_start: null,
+                    session_end: null,
                     allow_weekend: false,
-                    config: null
+                    config: null,
+                    config_json: '',
+                    json_error: null,
                 };
-                this.selectedWorkflowIds = new Set();
-            }
-            this.showModal = true;
-        },
-        closeModal() {
-            this.showModal = false;
-            this.editingSymbol = null;
-            this.modalStep = 1;
-            this.selectedWorkflowIds = new Set();
-        },
-        toTimeInput(value) {
-            if (!value) return null;
-            return value.slice(0, 5);
-        },
-        toggleWorkflow(workflowId) {
-            if (this.selectedWorkflowIds.has(workflowId)) {
-                this.selectedWorkflowIds.delete(workflowId);
-            } else {
-                this.selectedWorkflowIds.add(workflowId);
-            }
-        },
-        goToNextStep() {
-            if (this.modalStep === 1 && !this.form.symbol) {
-                this.showToast('Symbol is required', 'error');
-                return;
-            }
-            if (this.modalStep === 2 && this.selectedWorkflowIds.size === 0) {
-                this.showToast('Select at least one workflow', 'error');
-                return;
-            }
-            if (this.modalStep < 3) {
-                this.modalStep += 1;
-            }
-        },
-        goToPreviousStep() {
-            if (this.modalStep > 1) {
-                this.modalStep -= 1;
-            }
-        },
-        async saveSymbol() {
-            if (this.selectedWorkflowIds.size === 0) {
-                this.showToast('Select at least one workflow', 'error');
-                this.modalStep = 2;
-                return;
-            }
-            this.saving = true;
-            try {
-                const payload = {
-                    name: this.form.name,
-                    priority: this.form.priority,
-                    enabled: this.form.enabled,
-                    workflow_type: this.form.workflow_type,
-                    timezone: this.form.timezone,
-                    session_start: this.form.session_start || null,
-                    session_end: this.form.session_end || null,
-                    allow_weekend: this.form.allow_weekend,
-                    workflow_ids: Array.from(this.selectedWorkflowIds),
-                    config: this.form.config
+            },
+            hydrateWorkflowConfig(link) {
+                return {
+                    workflow_id: link.workflow_id,
+                    is_active: Boolean(link.is_active),
+                    timezone: link.timezone || 'America/New_York',
+                    session_start: link.session_start || null,
+                    session_end: link.session_end || null,
+                    allow_weekend: Boolean(link.allow_weekend),
+                    config: link.config || null,
+                    config_json: link.config ? JSON.stringify(link.config, null, 2) : '',
+                    json_error: null,
                 };
-                let response;
-                if (this.editingSymbol) {
-                    response = await fetch(`/api/workflow-symbols/${this.editingSymbol.symbol}`, {
+            },
+            addWorkflow(workflow) {
+                if (!workflow || this.isWorkflowSelected(workflow.id)) return;
+                this.selectedWorkflows.push(this.buildWorkflowConfig(workflow.id));
+                this.recalculatePriorities();
+            },
+            removeWorkflow(index) {
+                this.selectedWorkflows.splice(index, 1);
+                this.recalculatePriorities();
+            },
+            moveWorkflow(index, delta) {
+                const target = index + delta;
+                if (target < 0 || target >= this.selectedWorkflows.length) return;
+                const items = [...this.selectedWorkflows];
+                const [moved] = items.splice(index, 1);
+                items.splice(target, 0, moved);
+                this.selectedWorkflows = items;
+                this.recalculatePriorities();
+            },
+            recalculatePriorities() {
+                this.selectedWorkflows = this.selectedWorkflows.map((cfg, idx) => ({ ...cfg, priority: idx }));
+            },
+            isWorkflowSelected(workflowId) {
+                return this.selectedWorkflows.some((cfg) => cfg.workflow_id === workflowId);
+            },
+            getWorkflowName(workflowId) {
+                const wf = this.workflows.find((workflow) => workflow.id === workflowId);
+                return wf ? wf.name : `Workflow ${workflowId}`;
+            },
+            getWorkflowDagId(workflowId) {
+                const wf = this.workflows.find((workflow) => workflow.id === workflowId);
+                return wf && wf.dag_id ? wf.dag_id : 'No DAG linked';
+            },
+            validateJson(config) {
+                if (!config.config_json.trim()) {
+                    config.config = null;
+                    config.json_error = null;
+                    return;
+                }
+                try {
+                    const parsed = JSON.parse(config.config_json);
+                    if (parsed === null || Array.isArray(parsed) || typeof parsed !== 'object') {
+                        throw new Error('Config must be a JSON object');
+                    }
+                    config.config = parsed;
+                    config.json_error = null;
+                } catch (error) {
+                    config.json_error = error.message;
+                }
+            },
+            async saveSymbol() {
+                if (!this.validateSelectedWorkflows()) {
+                    this.modalStep = 2;
+                    return;
+                }
+                this.saving = true;
+                try {
+                    const workflowsPayload = this.selectedWorkflows.map((cfg) => ({
+                        workflow_id: cfg.workflow_id,
+                        is_active: cfg.is_active,
+                        timezone: cfg.timezone,
+                        session_start: cfg.session_start || null,
+                        session_end: cfg.session_end || null,
+                        allow_weekend: cfg.allow_weekend,
+                        config: cfg.config,
+                    }));
+                    const payload = {
+                        name: this.form.name,
+                        priority: this.form.priority,
+                        enabled: this.form.enabled,
+                        workflow_type: this.form.workflow_type,
+                        workflows: workflowsPayload,
+                    };
+                    let response;
+                    if (this.editingSymbol) {
+                        response = await fetch(`/api/workflow-symbols/${this.editingSymbol.symbol}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload),
+                        });
+                    } else {
+                        response = await fetch('/api/workflow-symbols/', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ...payload, symbol: this.form.symbol }),
+                        });
+                    }
+                    if (!response.ok) {
+                        const error = await response.json().catch(() => ({}));
+                        throw new Error(error.detail || 'Failed to save symbol');
+                    }
+                    await this.loadSymbols();
+                    this.showToast(`Symbol ${this.editingSymbol ? 'updated' : 'added'} successfully`, 'success');
+                    this.closeModal();
+                } catch (err) {
+                    this.showToast(err.message, 'error');
+                } finally {
+                    this.saving = false;
+                }
+            },
+            async toggleSymbol(symbol) {
+                try {
+                    const response = await fetch(`/api/workflow-symbols/${symbol.symbol}`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify({ enabled: !symbol.enabled })
                     });
-                } else {
-                    response = await fetch('/api/workflow-symbols/', {
-                        method: 'POST',
+                    if (!response.ok) throw new Error('Failed to update symbol');
+                    await this.loadSymbols();
+                    this.showToast(`${symbol.symbol} ${symbol.enabled ? 'disabled' : 'enabled'}`, 'success');
+                } catch (err) {
+                    this.showToast(err.message, 'error');
+                }
+            },
+            async changePriority(symbol, delta) {
+                try {
+                    const response = await fetch(`/api/workflow-symbols/${symbol.symbol}`, {
+                        method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ...payload, symbol: this.form.symbol })
+                        body: JSON.stringify({ priority: symbol.priority + delta })
                     });
+                    if (!response.ok) throw new Error('Failed to update priority');
+                    await this.loadSymbols();
+                } catch (err) {
+                    this.showToast(err.message, 'error');
                 }
-                if (!response.ok) {
-                    const error = await response.json().catch(() => ({}));
-                    throw new Error(error.detail || 'Failed to save symbol');
+            },
+            async deleteSymbol(symbol) {
+                if (!confirm(`Delete ${symbol.symbol}?`)) return;
+                try {
+                    const response = await fetch(`/api/workflow-symbols/${symbol.symbol}`, { method: 'DELETE' });
+                    if (!response.ok) throw new Error('Failed to delete symbol');
+                    await this.loadSymbols();
+                    this.showToast(`${symbol.symbol} deleted`, 'success');
+                } catch (err) {
+                    this.showToast(err.message, 'error');
                 }
-                await this.loadSymbols();
-                this.showToast(`Symbol ${this.editingSymbol ? 'updated' : 'added'} successfully`, 'success');
-                this.closeModal();
-            } catch (err) {
-                this.showToast(err.message, 'error');
-            } finally {
-                this.saving = false;
+            },
+            toastClasses(variant) {
+                switch (variant) {
+                    case 'error':
+                        return 'bg-red-50 border-red-200 text-red-800';
+                    default:
+                        return 'bg-green-50 border-green-200 text-green-800';
+                }
+            },
+            toastIcon(variant) {
+                return variant === 'error' ? 'fa fa-exclamation-circle text-red-500' : 'fa fa-check-circle text-green-500';
+            },
+            showToast(message, variant = 'success') {
+                if (this.toastTimeout) {
+                    clearTimeout(this.toastTimeout);
+                }
+                this.toast = { message, variant };
+                this.toastTimeout = setTimeout(() => {
+                    this.toast = null;
+                    this.toastTimeout = null;
+                }, 4000);
             }
-        },
-        async toggleSymbol(symbol) {
-            try {
-                const response = await fetch(`/api/workflow-symbols/${symbol.symbol}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ enabled: !symbol.enabled })
-                });
-                if (!response.ok) throw new Error('Failed to update symbol');
-                await this.loadSymbols();
-                this.showToast(`${symbol.symbol} ${symbol.enabled ? 'disabled' : 'enabled'}`, 'success');
-            } catch (err) {
-                this.showToast(err.message, 'error');
-            }
-        },
-        async changePriority(symbol, delta) {
-            try {
-                const response = await fetch(`/api/workflow-symbols/${symbol.symbol}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ priority: symbol.priority + delta })
-                });
-                if (!response.ok) throw new Error('Failed to update priority');
-                await this.loadSymbols();
-            } catch (err) {
-                this.showToast(err.message, 'error');
-            }
-        },
-        async deleteSymbol(symbol) {
-            if (!confirm(`Delete ${symbol.symbol}?`)) return;
-            try {
-                const response = await fetch(`/api/workflow-symbols/${symbol.symbol}`, { method: 'DELETE' });
-                if (!response.ok) throw new Error('Failed to delete symbol');
-                await this.loadSymbols();
-                this.showToast(`${symbol.symbol} deleted`, 'success');
-            } catch (err) {
-                this.showToast(err.message, 'error');
-            }
-        },
-        toastClasses(variant) {
-            switch (variant) {
-                case 'error':
-                    return 'bg-red-50 border-red-200 text-red-800';
-                default:
-                    return 'bg-green-50 border-green-200 text-green-800';
-            }
-        },
-        toastIcon(variant) {
-            return variant === 'error' ? 'fa fa-exclamation-circle text-red-500' : 'fa fa-check-circle text-green-500';
-        },
-        showToast(message, variant = 'success') {
-            if (this.toastTimeout) {
-                clearTimeout(this.toastTimeout);
-            }
-            this.toast = { message, variant };
-            this.toastTimeout = setTimeout(() => {
-                this.toast = null;
-                this.toastTimeout = null;
-            }, 4000);
-        }
-    };
-}
-
+        };
+    }
 </script>
 
 {% endblock %}

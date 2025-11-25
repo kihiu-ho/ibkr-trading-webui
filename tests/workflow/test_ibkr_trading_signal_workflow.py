@@ -1,11 +1,14 @@
 import os
 import sys
+sys.path.append(os.path.abspath('.'))
 sys.path.append(os.path.abspath('dags'))
 
 import unittest
 from unittest.mock import patch, MagicMock
 import json
 from datetime import datetime, timedelta
+from decimal import Decimal
+from airflow.exceptions import AirflowFailException
 
 # Mock environment variables for configuration
 os.environ['POSTGRES_HOST'] = 'localhost'
@@ -27,13 +30,16 @@ os.environ['MINIO_HOST'] = 'localhost:9000'
 os.environ['MINIO_ACCESS_KEY'] = 'minioadmin'
 os.environ['MINIO_SECRET_KEY'] = 'minioadmin'
 os.environ['MINIO_BUCKET_NAME'] = 'charts'
+os.environ['IBKR_HOST'] = 'gateway'
+os.environ['IBKR_PORT'] = '4002'
 
 
 # Import modules that depend on the mocked environment variables
 from dags.ibkr_trading_signal_workflow import (
     fetch_market_data_task, generate_daily_chart_task, generate_weekly_chart_task,
     analyze_with_llm_task, place_order_task, get_trades_task,
-    get_portfolio_task, log_to_mlflow_task, SYMBOL, IBKR_HOST, IBKR_PORT, POSITION_SIZE
+    get_portfolio_task, log_to_mlflow_task, SYMBOL, IBKR_HOST, IBKR_PORT, POSITION_SIZE,
+    MARKET_DATA_DURATION, MARKET_DATA_BAR_SIZE
 )
 from dags.models.market_data import MarketData, OHLCVBar
 from dags.models.chart import ChartResult, ChartConfig, Timeframe
@@ -58,32 +64,69 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
         # Ensure charts directory exists for tests
         os.makedirs(os.getenv('CHARTS_DIR'), exist_ok=True)
 
+    def _set_xcom_pull_mapping(self, mapping: dict):
+        """Helper to route xcom_pull responses by key."""
+        def _side_effect(*args, **kwargs):
+            key = kwargs.get('key')
+            return mapping.get(key)
+        self.mock_context['task_instance'].xcom_pull.side_effect = _side_effect
+
     @patch('dags.ibkr_trading_signal_workflow.IBKRClient')
     def test_fetch_market_data_task(self, MockIBKRClient):
         mock_client_instance = MockIBKRClient.return_value.__enter__.return_value
         mock_market_data = MarketData(
             symbol=SYMBOL,
             bars=[
-                OHLCVBar(date=datetime(2023, 1, 1), open=100.0, high=105.0, low=99.0, close=103.0, volume=100000),
-                OHLCVBar(date=datetime(2023, 1, 2), open=103.0, high=108.0, low=102.0, close=107.0, volume=120000)
+                OHLCVBar(timestamp=datetime(2023, 1, 1), open=100.0, high=105.0, low=99.0, close=103.0, volume=100000),
+                OHLCVBar(timestamp=datetime(2023, 1, 2), open=103.0, high=108.0, low=102.0, close=107.0, volume=120000)
             ],
             latest_price=107.0,
             timeframe='1 day'
         )
         mock_client_instance.fetch_market_data.return_value = mock_market_data
+        mock_client_instance.get_metadata.return_value = {'ib_insync_version': '1.0.0', 'connection_mode': 'mock'}
 
         result = fetch_market_data_task(**self.mock_context)
 
-        MockIBKRClient.assert_called_with(host=IBKR_HOST, port=IBKR_PORT)
+        MockIBKRClient.assert_called_with(host=IBKR_HOST, port=IBKR_PORT, strict_mode=False)
         mock_client_instance.fetch_market_data.assert_called_once_with(
-            symbol=SYMBOL, exchange="SMART", duration="200 D", bar_size="1 day"
+            symbol=SYMBOL, exchange="SMART", duration=MARKET_DATA_DURATION, bar_size=MARKET_DATA_BAR_SIZE
         )
-        self.mock_context['task_instance'].xcom_push.assert_called_once_with(
-            key='market_data', value=mock_market_data.model_dump_json()
+        self.assertIn(
+            ('market_data', mock_market_data.model_dump_json()),
+            [(call.kwargs.get('key'), call.kwargs.get('value')) for call in self.mock_context['task_instance'].xcom_push.call_args_list]
         )
+        metadata_calls = [
+            call for call in self.mock_context['task_instance'].xcom_push.call_args_list
+            if call.kwargs.get('key') == 'market_data_metadata'
+        ]
+        self.assertEqual(len(metadata_calls), 1)
+        self.assertEqual(metadata_calls[0].kwargs['value']['bars_returned'], 2)
         self.assertEqual(result['symbol'], SYMBOL)
         self.assertEqual(result['bars'], 2)
         self.assertEqual(result['latest_price'], 107.0)
+    
+    @patch('dags.ibkr_trading_signal_workflow.is_strict_mode', return_value=True)
+    @patch('dags.ibkr_trading_signal_workflow.IBKRClient')
+    def test_prod_mode_requires_full_history(self, MockIBKRClient, mock_is_strict):
+        mock_client_instance = MockIBKRClient.return_value.__enter__.return_value
+        bars = [
+            OHLCVBar(timestamp=datetime(2023, 1, 1) + timedelta(days=i), open=100.0 + i, high=105.0 + i, low=99.0 + i, close=103.0 + i, volume=100000)
+            for i in range(10)
+        ]
+        mock_market_data = MarketData(symbol=SYMBOL, bars=bars, latest_price=bars[-1].close, timeframe='1 day')
+        mock_client_instance.fetch_market_data.return_value = mock_market_data
+        mock_client_instance.get_metadata.return_value = {}
+
+        with self.assertRaises(AirflowFailException):
+            fetch_market_data_task(**self.mock_context)
+
+        mock_client_instance.fetch_market_data.assert_called_once_with(
+            symbol=SYMBOL,
+            exchange="SMART",
+            duration='1 Y',
+            bar_size='1 day'
+        )
 
     @patch('dags.ibkr_trading_signal_workflow.ChartGenerator')
     @patch('dags.ibkr_trading_signal_workflow.upload_chart_to_minio', return_value='http://minio/daily_chart.png')
@@ -92,15 +135,23 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
         mock_market_data = MarketData(
             symbol=SYMBOL,
             bars=[
-                OHLCVBar(date=datetime(2023, 1, 1), open=100.0, high=105.0, low=99.0, close=103.0, volume=100000),
-                OHLCVBar(date=datetime(2023, 1, 2), open=103.0, high=108.0, low=102.0, close=107.0, volume=120000)
+                OHLCVBar(timestamp=datetime(2023, 1, 1), open=100.0, high=105.0, low=99.0, close=103.0, volume=100000),
+                OHLCVBar(timestamp=datetime(2023, 1, 2), open=103.0, high=108.0, low=102.0, close=107.0, volume=120000)
             ],
             latest_price=107.0,
             timeframe='1 day'
         )
-        self.mock_context['task_instance'].xcom_pull.side_effect = [
-            mock_market_data.model_dump_json()
-        ]
+        self._set_xcom_pull_mapping({
+            'market_data': mock_market_data.model_dump_json(),
+            'market_data_metadata': {
+                'strict_mode': True,
+                'bars_requested': '1 Y',
+                'bar_size': '1 day',
+                'bars_returned': 2,
+                'ibkr_host': 'gateway',
+                'ibkr_port': 4002
+            }
+        })
 
         mock_chart_gen_instance = MockChartGenerator.return_value
         mock_chart_result = ChartResult(
@@ -117,7 +168,7 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
 
         MockChartGenerator.assert_called_with(output_dir=os.getenv('CHARTS_DIR'))
         mock_chart_gen_instance.generate_chart.assert_called_once()
-        self.mock_context['task_instance'].xcom_push.assert_called_once_with(
+        self.mock_context['task_instance'].xcom_push.assert_any_call(
             key='daily_chart', value=mock_chart_result.model_dump_json()
         )
         mock_upload_chart_to_minio.assert_called_once()
@@ -132,21 +183,29 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
         mock_market_data = MarketData(
             symbol=SYMBOL,
             bars=[
-                OHLCVBar(date=datetime(2023, 1, 1), open=100.0, high=105.0, low=99.0, close=103.0, volume=100000),
-                OHLCVBar(date=datetime(2023, 1, 2), open=103.0, high=108.0, low=102.0, close=107.0, volume=120000)
+                OHLCVBar(timestamp=datetime(2023, 1, 1), open=100.0, high=105.0, low=99.0, close=103.0, volume=100000),
+                OHLCVBar(timestamp=datetime(2023, 1, 2), open=103.0, high=108.0, low=102.0, close=107.0, volume=120000)
             ],
             latest_price=107.0,
             timeframe='1 day'
         )
-        self.mock_context['task_instance'].xcom_pull.side_effect = [
-            mock_market_data.model_dump_json()
-        ]
+        self._set_xcom_pull_mapping({
+            'market_data': mock_market_data.model_dump_json(),
+            'market_data_metadata': {
+                'strict_mode': False,
+                'bars_requested': '200 D',
+                'bar_size': '1 day',
+                'bars_returned': 2,
+                'ibkr_host': 'gateway',
+                'ibkr_port': 4002
+            }
+        })
 
         mock_chart_gen_instance = MockChartGenerator.return_value
         mock_weekly_data = MarketData(
             symbol=SYMBOL,
             bars=[
-                OHLCVBar(date=datetime(2023, 1, 1), open=100.0, high=108.0, low=99.0, close=107.0, volume=220000),
+                OHLCVBar(timestamp=datetime(2023, 1, 1), open=100.0, high=108.0, low=99.0, close=107.0, volume=220000),
             ],
             latest_price=107.0,
             timeframe='1 week'
@@ -167,7 +226,7 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
         MockChartGenerator.assert_called_with(output_dir=os.getenv('CHARTS_DIR'))
         mock_chart_gen_instance.resample_to_weekly.assert_called_once_with(mock_market_data)
         mock_chart_gen_instance.generate_chart.assert_called_once()
-        self.mock_context['task_instance'].xcom_push.assert_called_once_with(
+        self.mock_context['task_instance'].xcom_push.assert_any_call(
             key='weekly_chart', value=mock_chart_result.model_dump_json()
         )
         mock_upload_chart_to_minio.assert_called_once()
@@ -205,7 +264,8 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             reasoning="Market looks good",
             is_actionable=True,
             suggested_entry_price=101.0,
-            model_used='mock_model'
+            model_used='mock_model',
+            timeframe_analyzed='daily'
         )
 
         self.mock_context['task_instance'].xcom_pull.side_effect = [
@@ -236,9 +296,10 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
         self.assertTrue(result['is_actionable'])
         self.assertEqual(result['entry_price'], 101.0)
     
+    @patch('dags.ibkr_trading_signal_workflow.update_artifact')
     @patch('dags.ibkr_trading_signal_workflow.IBKRClient')
     @patch('dags.ibkr_trading_signal_workflow.store_order_artifact')
-    def test_place_order_task_actionable(self, mock_store_order_artifact, MockIBKRClient):
+    def test_place_order_task_actionable(self, mock_store_order_artifact, MockIBKRClient, mock_update_artifact):
         mock_signal = TradingSignal(
             symbol=SYMBOL,
             action=SignalAction.BUY,
@@ -246,7 +307,17 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             confidence_score=90,
             reasoning="Market looks good",
             is_actionable=True,
-            suggested_entry_price=101.0
+            suggested_entry_price=101.0,
+            model_used='mock_model',
+            timeframe_analyzed='daily'
+        )
+        mock_market_data = MarketData(
+            symbol=SYMBOL,
+            bars=[
+                OHLCVBar(timestamp=datetime(2023, 1, 1), open=100.0, high=105.0, low=99.0, close=103.0, volume=100000),
+            ],
+            latest_price=103.0,
+            timeframe='1 day'
         )
         mock_order = Order(
             symbol=SYMBOL,
@@ -259,22 +330,76 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             submitted_at=datetime.now()
         )
 
-        self.mock_context['task_instance'].xcom_pull.side_effect = [
-            mock_signal.model_dump_json()
-        ]
+        self._set_xcom_pull_mapping({
+            'trading_signal': mock_signal.model_dump_json(),
+            'signal_artifact_id': 123,
+            'market_data': mock_market_data.model_dump_json(),
+            'market_data_metadata': {'bars_returned': mock_market_data.bar_count, 'strict_mode': False}
+        })
 
         mock_client_instance = MockIBKRClient.return_value.__enter__.return_value
         mock_client_instance.place_order.return_value = mock_order
 
         result = place_order_task(**self.mock_context)
 
-        MockIBKRClient.assert_called_with(host=IBKR_HOST, port=IBKR_PORT)
+        MockIBKRClient.assert_called_with(host=IBKR_HOST, port=IBKR_PORT, strict_mode=False)
         mock_client_instance.place_order.assert_called_once()
         self.mock_context['task_instance'].xcom_push.assert_any_call(key='order', value=mock_order.model_dump_json())
         self.mock_context['task_instance'].xcom_push.assert_any_call(key='order_placed', value=True)
+        self.mock_context['task_instance'].xcom_push.assert_any_call(key='normalized_limit_price', value=float(mock_signal.suggested_entry_price))
         mock_store_order_artifact.assert_called_once()
+        mock_update_artifact.assert_called()
         self.assertTrue(result['order_placed'])
         self.assertEqual(result['order_id'], 123)
+    
+    @patch('dags.ibkr_trading_signal_workflow.update_artifact')
+    @patch('dags.ibkr_trading_signal_workflow.IBKRClient')
+    @patch('dags.ibkr_trading_signal_workflow.store_order_artifact')
+    def test_place_order_task_uses_market_data_when_signal_missing(self, mock_store_order_artifact, MockIBKRClient, mock_update_artifact):
+        mock_signal = TradingSignal(
+            symbol=SYMBOL,
+            action=SignalAction.BUY,
+            confidence=SignalConfidence.HIGH,
+            confidence_score=90,
+            reasoning="Market looks strong",
+            is_actionable=True,
+            suggested_entry_price=None,
+            model_used='mock_model',
+            timeframe_analyzed='daily'
+        )
+        bars = [
+            OHLCVBar(timestamp=datetime(2023, 1, 1) + timedelta(days=i), open=100.0 + i, high=105.0 + i, low=99.0 + i, close=110.12 + i, volume=100000)
+            for i in range(3)
+        ]
+        mock_market_data = MarketData(symbol=SYMBOL, bars=bars, latest_price=bars[-1].close, timeframe='1 day')
+        mock_order = Order(
+            symbol=SYMBOL,
+            side=OrderSide.BUY,
+            quantity=POSITION_SIZE,
+            order_type=OrderType.LIMIT,
+            limit_price=Decimal('112.12'),
+            order_id=456,
+            status=OrderStatus.SUBMITTED,
+            submitted_at=datetime.now()
+        )
+        self._set_xcom_pull_mapping({
+            'trading_signal': mock_signal.model_dump_json(),
+            'signal_artifact_id': 77,
+            'market_data': mock_market_data.model_dump_json(),
+            'market_data_metadata': {'bars_returned': mock_market_data.bar_count, 'strict_mode': False}
+        })
+        mock_client_instance = MockIBKRClient.return_value.__enter__.return_value
+        mock_client_instance.place_order.return_value = mock_order
+
+        result = place_order_task(**self.mock_context)
+
+        placed_order = mock_client_instance.place_order.call_args[0][0]
+        self.assertEqual(str(placed_order.limit_price), '112.12')
+        mock_store_order_artifact.assert_called_once()
+        metadata = mock_store_order_artifact.call_args.kwargs.get('metadata')
+        self.assertEqual(metadata['limit_price_source'], 'market_data_close')
+        self.assertTrue(result['order_placed'])
+        mock_update_artifact.assert_called()
     
     @patch('dags.ibkr_trading_signal_workflow.IBKRClient')
     @patch('dags.ibkr_trading_signal_workflow.store_order_artifact')
@@ -285,12 +410,15 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
             confidence=SignalConfidence.MEDIUM,
             confidence_score=50,
             reasoning="Uncertain market",
-            is_actionable=False
+            is_actionable=False,
+            model_used='mock_model',
+            timeframe_analyzed='daily'
         )
 
-        self.mock_context['task_instance'].xcom_pull.side_effect = [
-            mock_signal.model_dump_json()
-        ]
+        self._set_xcom_pull_mapping({
+            'trading_signal': mock_signal.model_dump_json(),
+            'signal_artifact_id': None
+        })
 
         result = place_order_task(**self.mock_context)
 
@@ -299,6 +427,36 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
         self.mock_context['task_instance'].xcom_push.assert_called_once_with(key='order_placed', value=False)
         self.assertFalse(result['order_placed'])
         self.assertEqual(result['reason'], 'Signal not actionable')
+    
+    @patch('dags.ibkr_trading_signal_workflow.update_artifact')
+    @patch('dags.ibkr_trading_signal_workflow.IBKRClient')
+    @patch('dags.ibkr_trading_signal_workflow.store_order_artifact')
+    def test_prod_mode_rejects_when_price_invalid(self, mock_store_order_artifact, MockIBKRClient, mock_update_artifact):
+        mock_signal = TradingSignal(
+            symbol=SYMBOL,
+            action=SignalAction.BUY,
+            confidence=SignalConfidence.HIGH,
+            confidence_score=90,
+            reasoning="Bad data overall",
+            is_actionable=True,
+            suggested_entry_price=-1,
+            model_used='mock_model',
+            timeframe_analyzed='daily'
+        )
+        self._set_xcom_pull_mapping({
+            'trading_signal': mock_signal.model_dump_json(),
+            'signal_artifact_id': 55,
+            'market_data_metadata': {}
+        })
+
+        result = place_order_task(**self.mock_context)
+
+        MockIBKRClient.assert_not_called()
+        mock_store_order_artifact.assert_not_called()
+        mock_update_artifact.assert_called_once()
+        self.mock_context['task_instance'].xcom_push.assert_any_call(key='order_placed', value=False)
+        self.assertFalse(result['order_placed'])
+        self.assertIn("Unable to compute", result['reason'])
 
     @patch('dags.ibkr_trading_signal_workflow.IBKRClient')
     @patch('dags.ibkr_trading_signal_workflow.store_trade_artifact')
@@ -337,7 +495,7 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
 
         result = get_trades_task(**self.mock_context)
 
-        MockIBKRClient.assert_called_with(host=IBKR_HOST, port=IBKR_PORT)
+        MockIBKRClient.assert_called_with(host=IBKR_HOST, port=IBKR_PORT, strict_mode=False)
         mock_client_instance.get_trades.assert_called_once_with(mock_order.order_id)
         self.mock_context['task_instance'].xcom_push.assert_called_once_with(
             key='trades', value=[mock_trade.model_dump_json()]
@@ -387,7 +545,7 @@ class TestIBKRTradingSignalWorkflow(unittest.TestCase):
 
         result = get_portfolio_task(**self.mock_context)
 
-        MockIBKRClient.assert_called_with(host=IBKR_HOST, port=IBKR_PORT)
+        MockIBKRClient.assert_called_with(host=IBKR_HOST, port=IBKR_PORT, strict_mode=False)
         mock_client_instance.get_portfolio.assert_called_once()
         self.mock_context['task_instance'].xcom_push.assert_called_once_with(
             key='portfolio', value=mock_portfolio.model_dump_json()
