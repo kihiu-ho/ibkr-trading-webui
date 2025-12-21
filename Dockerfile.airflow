@@ -21,17 +21,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3 -m pip install --no-cache-dir uv
 
 # Copy Airflow runtime requirements (chart + ML dependencies including Kaleido)
-COPY airflow/requirements-airflow.txt /tmp/requirements-airflow.txt
+COPY --chown=airflow:0 airflow/requirements-airflow.txt /tmp/requirements-airflow.txt
 
-# Switch to airflow user to install packages in their environment
+# Switch to airflow user to install packages into Airflow's Python environment.
 USER airflow
 
-# Install additional ML and data processing packages using uv (from requirements file)
-# uv is much faster and more reliable than pip for large packages
-# Install to airflow user's Python environment (same as Airflow itself)
-RUN uv pip install --system --no-cache -r /tmp/requirements-airflow.txt \
+# Install additional ML and data processing packages using uv (from requirements file).
+# Airflow's official image uses a Python environment rooted at /home/airflow/.local, so
+# we install into that prefix to ensure imports work at runtime.
+RUN uv pip install --no-cache --prefix /home/airflow/.local -r /tmp/requirements-airflow.txt \
     && rm -f /tmp/requirements-airflow.txt \
     && echo "✓ Installed ML and data processing packages using uv"
+
+# Build-time verification that AutoGen is importable (FinAgent + TradeMaster DAGs)
+RUN python3 - <<'PY'
+import autogen_agentchat  # noqa: F401
+import autogen_core  # noqa: F401
+from autogen_ext.models.openai import OpenAIChatCompletionClient  # noqa: F401
+
+print("✓ AutoGen import check passed")
+PY
 
 # Build-time verification that Kaleido is importable
 RUN python3 - <<'PY'

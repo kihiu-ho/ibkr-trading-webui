@@ -1,0 +1,5 @@
+Vendored from: https://github.com/TradeMaster-NTU/TradeMaster
+Commit: 1747cc18db3fe2639af12defc80e138c51a625c0
+Vendored on: 2025-12-21
+
+Note: This subtree contains the upstream `trademaster` package copied into this repo for reproducible, offline builds.

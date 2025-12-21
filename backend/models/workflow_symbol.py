@@ -55,7 +55,7 @@ class SymbolWorkflowLink(Base):
         Index("idx_symbol_workflow_links_symbol_priority", "workflow_symbol_id", "priority"),
     )
 
-    workflow = relationship("Workflow", back_populates="workflow_links")
+    # Relationship to parent symbol
     symbol = relationship("WorkflowSymbol", back_populates="workflow_links")
 
     def format_time(self, value):
@@ -63,8 +63,7 @@ class SymbolWorkflowLink(Base):
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id,
-            "workflow_symbol_id": self.workflow_symbol_id,
+            "link_id": self.id,
             "dag_id": self.dag_id,
             "is_active": bool(self.is_active),
             "priority": self.priority,
@@ -102,13 +101,6 @@ class WorkflowSymbol(Base):
         lazy="selectin",
         order_by="SymbolWorkflowLink.priority",
     )
-    workflows = relationship(
-        "Workflow",
-        secondary="symbol_workflow_links",
-        viewonly=True,
-        lazy="selectin",
-        back_populates="linked_symbols",
-    )
 
     def __repr__(self):
         return f"<WorkflowSymbol(symbol={self.symbol}, enabled={self.enabled})>"
@@ -121,14 +113,11 @@ class WorkflowSymbol(Base):
             "name": self.name,
             "enabled": self.enabled,
             "priority": self.priority,
+            "conid": self.conid,
             "workflow_type": self.workflow_type,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "workflows": [
-                link.to_dict()
-                for link in self.workflow_links
-                if link.workflow
-            ],
+            "workflows": [link.to_dict() for link in self.workflow_links],
         }
 
 

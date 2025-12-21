@@ -22,19 +22,6 @@ class Workflow(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     strategies = relationship("Strategy", back_populates="workflow")
-    workflow_links = relationship(
-        "SymbolWorkflowLink",
-        back_populates="workflow",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
-    linked_symbols = relationship(
-        "WorkflowSymbol",
-        secondary="symbol_workflow_links",
-        back_populates="workflows",
-        viewonly=True,
-        lazy="selectin",
-    )
 
     def to_dict(self) -> dict:
         """Serialize workflow metadata for APIs."""

@@ -52,11 +52,42 @@ class WorkflowConfig:
         # FinAgent-specific configuration
         self.finagent_enabled = os.getenv('FINAGENT_ENABLED', 'false').lower() == 'true'
         self.finagent_model_path = os.getenv('FINAGENT_MODEL_PATH', 'reference/finagent_runtime')
+        self.finagent_prompts_version = (os.getenv('FINAGENT_PROMPTS_VERSION', 'v1') or 'v1').strip().lower()
         try:
             self.finagent_reflection_rounds = max(1, int(os.getenv('FINAGENT_REFLECTION_ROUNDS', '2') or 2))
         except ValueError:
             self.finagent_reflection_rounds = 2
         self.finagent_toolkit = self._parse_tool_list(os.getenv('FINAGENT_TOOLKIT', 'technical_indicators,news_memory'))
+
+        # FinAgent AutoGen pipeline (new DAG)
+        self.finagent_autogen_enabled = os.getenv('FINAGENT_AUTOGEN_ENABLED', 'false').lower() == 'true'
+        self.finagent_autogen_default_mode = (os.getenv('FINAGENT_AUTOGEN_DEFAULT_MODE', 'inference') or 'inference').strip().lower()
+        self.finagent_autogen_max_rounds = self._parse_int(os.getenv('FINAGENT_AUTOGEN_MAX_ROUNDS', '8'), default=8)
+        self.finagent_autogen_backtest_lookback_days = self._parse_int(
+            os.getenv('FINAGENT_AUTOGEN_BACKTEST_LOOKBACK_DAYS', '365'),
+            default=365,
+        )
+
+        # TradeMaster AutoGen pipeline (new DAG)
+        self.trademaster_autogen_enabled = os.getenv('TRADEMASTER_AUTOGEN_ENABLED', 'false').lower() == 'true'
+        self.trademaster_autogen_default_mode = (os.getenv('TRADEMASTER_AUTOGEN_DEFAULT_MODE', 'both') or 'both').strip().lower()
+        self.trademaster_autogen_max_rounds = self._parse_int(os.getenv('TRADEMASTER_AUTOGEN_MAX_ROUNDS', '8'), default=8)
+        self.trademaster_autogen_backtest_lookback_days = self._parse_int(
+            os.getenv('TRADEMASTER_AUTOGEN_BACKTEST_LOOKBACK_DAYS', '365'),
+            default=365,
+        )
+        self.trademaster_autogen_max_symbols = self._parse_int(
+            os.getenv('TRADEMASTER_AUTOGEN_MAX_SYMBOLS', '10'),
+            default=10,
+        )
+
+        # News API (market intelligence source)
+        self.news_api_key = os.getenv('NEWS_API_KEY', '').strip()
+        self.news_api_base_url = os.getenv('NEWS_API_BASE_URL', 'https://newsapi.org/v2/everything').strip()
+        self.news_api_language = os.getenv('NEWS_API_LANGUAGE', 'en').strip() or 'en'
+        self.news_api_sort_by = os.getenv('NEWS_API_SORT_BY', 'publishedAt').strip() or 'publishedAt'
+        self.news_api_page_size = self._parse_int(os.getenv('NEWS_API_PAGE_SIZE', '10'), default=10)
+        self.news_api_timeout = self._parse_int(os.getenv('NEWS_API_TIMEOUT', '10'), default=10)
 
         # Vector memory (Weaviate)
         self.weaviate_url = os.getenv('WEAVIATE_URL', '').strip()
@@ -125,6 +156,15 @@ class WorkflowConfig:
             'finagent_reflection_rounds': self.finagent_reflection_rounds,
             'has_weaviate': str(bool(self.weaviate_url)),
             'has_neon_database': str(bool(self.neon_database_url)),
+            'finagent_prompts_version': self.finagent_prompts_version,
+            'has_news_api_key': str(bool(self.news_api_key)),
+            'finagent_autogen_enabled': str(self.finagent_autogen_enabled),
+            'finagent_autogen_default_mode': self.finagent_autogen_default_mode,
+            'finagent_autogen_max_rounds': str(self.finagent_autogen_max_rounds),
+            'trademaster_autogen_enabled': str(self.trademaster_autogen_enabled),
+            'trademaster_autogen_default_mode': self.trademaster_autogen_default_mode,
+            'trademaster_autogen_max_rounds': str(self.trademaster_autogen_max_rounds),
+            'trademaster_autogen_max_symbols': str(self.trademaster_autogen_max_symbols),
         }
 
     def _apply_database_url(self, url: str) -> None:

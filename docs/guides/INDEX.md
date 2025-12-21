@@ -12,6 +12,9 @@
 - [Shared Database Setup](SHARED_DATABASE_SETUP.md)
 - [Airflow MLflow Setup](AIRFLOW_MLFLOW_SETUP.md)
 - [Airflow MLflow Quick Reference](AIRFLOW_MLFLOW_QUICK_REFERENCE.md)
+- [FinAgent Setup](FINAGENT_SETUP.md)
+- [FinAgent Trading Signal Workflow](FINAGENT_TRADING_SIGNAL_WORKFLOW.md)
+- [FinAgent AutoGen Pipeline Workflow](FINAGENT_AUTOGEN_PIPELINE_WORKFLOW.md)
 - [Test Suite README](TEST_SUITE_README.md)
 
 ## Testing

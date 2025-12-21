@@ -9,8 +9,12 @@ from airflow.operators.python import PythonOperator
 # from airflow.utils.dates import days_ago # Deprecated in Airflow 2.x+
 import logging
 import os
+import sys
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Optional, Tuple, List
+
+# Ensure Airflow can import local `models/` and `utils/` packages regardless of how the DAG is executed.
+sys.path.append(os.path.dirname(__file__))
 
 # Import models
 from models.market_data import MarketData, OHLCVBar

@@ -4,7 +4,7 @@ from datetime import time
 from typing import List, Optional, Sequence, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pytz import UnknownTimeZoneError, timezone as pytz_timezone
 from sqlalchemy.orm import Session, selectinload
 
@@ -29,30 +29,20 @@ class SymbolWorkflowConfig(BaseModel):
     schedule_interval: str = "0 9 * * *"  # Cron expression or preset
     config: Optional[dict] = None
 
-    @staticmethod
-    def _parse_time_string(v):
+    @field_validator('session_start', 'session_end', mode='before')
+    @classmethod
+    def parse_time_string(cls, v):
         """Parse time from string format HH:MM or HH:MM:SS"""
         if v is None or isinstance(v, time):
             return v
         if isinstance(v, str):
-            from datetime import time as dt_time
             parts = v.split(':')
             if len(parts) >= 2:
                 hour = int(parts[0])
                 minute = int(parts[1])
                 second = int(parts[2]) if len(parts) > 2 else 0
-                return dt_time(hour, minute, second)
+                return time(hour, minute, second)
         return v
-
-    @classmethod
-    def model_validate(cls, obj, *args, **kwargs):
-        """Override model_validate to handle time string parsing"""
-        if isinstance(obj, dict):
-            if 'session_start' in obj and isinstance(obj['session_start'], str):
-                obj['session_start'] = cls._parse_time_string(obj['session_start'])
-            if 'session_end' in obj and isinstance(obj['session_end'], str):
-                obj['session_end'] = cls._parse_time_string(obj['session_end'])
-        return super().model_validate(obj, *args, **kwargs)
 
 
 class LinkedWorkflowSummary(BaseModel):
@@ -200,7 +190,7 @@ def list_symbols(
     db: Session = Depends(get_db),
 ):
     query = db.query(WorkflowSymbol).options(
-        selectinload(WorkflowSymbol.workflow_links).selectinload(SymbolWorkflowLink.workflow),
+        selectinload(WorkflowSymbol.workflow_links),
     )
     if enabled_only:
         query = query.filter(WorkflowSymbol.enabled.is_(True))
@@ -274,7 +264,7 @@ def get_symbol(symbol: str, db: Session = Depends(get_db)):
     db_symbol = (
         db.query(WorkflowSymbol)
         .options(
-            selectinload(WorkflowSymbol.workflow_links).selectinload(SymbolWorkflowLink.workflow),
+            selectinload(WorkflowSymbol.workflow_links),
         )
         .filter(WorkflowSymbol.symbol == symbol)
         .first()
@@ -290,7 +280,7 @@ def update_symbol(symbol: str, updates: WorkflowSymbolUpdate, db: Session = Depe
     db_symbol = (
         db.query(WorkflowSymbol)
         .options(
-            selectinload(WorkflowSymbol.workflow_links).selectinload(SymbolWorkflowLink.workflow),
+            selectinload(WorkflowSymbol.workflow_links),
         )
         .filter(WorkflowSymbol.symbol == symbol)
         .first()

@@ -38,15 +38,22 @@ def test_task():
     return "Success"
 
 # Define the DAG
-with DAG(
-    'example_ibkr_dag',
+_dag_kwargs = dict(
+    dag_id='example_ibkr_dag',
     default_args=default_args,
     description='Example DAG for IBKR Trading System',
-    schedule_interval=None,  # Manual trigger only
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=['example', 'test'],
-) as dag:
+)
+
+# Airflow 3: uses `schedule`; Airflow 2: still supports `schedule_interval`.
+try:
+    dag = DAG(**_dag_kwargs, schedule=None)
+except TypeError:  # pragma: no cover
+    dag = DAG(**_dag_kwargs, schedule_interval=None)
+
+with dag:
 
     test_task_op = PythonOperator(
         task_id='test_task',
@@ -60,4 +67,3 @@ with DAG(
 
     # Set task dependencies
     test_task_op >> mlflow_test_op
-

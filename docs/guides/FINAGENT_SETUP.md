@@ -2,6 +2,8 @@
 
 This guide explains how to enable the FinAgent multimodal workflow that pairs IBKR market data with the FinAgent architecture (market intelligence, diversified memory, dual reflections, and decision modules). Use it when you want Airflow to orchestrate FinAgent runs with MLflow tracking, Weaviate vector memory, and Neon metadata storage.
 
+For a task-by-task + internal-stage walkthrough of the DAG, see `docs/guides/FINAGENT_TRADING_SIGNAL_WORKFLOW.md`.
+
 ## 1. Prerequisites
 - **Docker/Airflow stack** booted via this repository (`start-services.sh` or `start-docker-services.sh`).
 - **Python dependencies** rebuilt so the Airflow image includes the latest libraries:
@@ -24,9 +26,13 @@ Copy `env.example` to `.env` and review the new FinAgent settings:
 | `NEON_DATABASE` | Dedicated Neon cluster for FinAgent metadata (market-data snapshots, imported news, prompt/response archives). Falls back to `DATABASE_URL` when unset. |
 | `FINAGENT_ENABLED` | Feature flag (set to `true` to surface the DAG/UI toggle). |
 | `FINAGENT_MODEL_PATH` | Local path to FinAgent checkpoints or prompt assets. |
+| `FINAGENT_PROMPTS_VERSION` | Prompt template version selector (`v1` or `v3`). The paper-v3 DAG forces `v3` regardless of this setting. |
 | `FINAGENT_REFLECTION_ROUNDS` | Number of low/high-level reflection iterations. |
 | `FINAGENT_TOOLKIT` | Comma-delimited list of FinAgent tools (e.g., `technical_indicators,news_memory,rl_baseline`). |
 | `WEAVIATE_URL` / `WEAVIATE_API_KEY` | Vector database connection for diversified memory. |
+| `NEWS_API_KEY` | NewsAPI key (used to fetch “latest market intelligence” for the paper-v3 workflow). |
+| `NEWS_API_BASE_URL` | NewsAPI endpoint (default: `https://newsapi.org/v2/everything`). |
+| `NEWS_API_LANGUAGE` / `NEWS_API_SORT_BY` / `NEWS_API_PAGE_SIZE` / `NEWS_API_TIMEOUT` | NewsAPI request filters and timeouts. |
 | `OPENAI_API_KEY` / `OPENAI_API_BASE` / `OPENAI_MODEL` / `LLM_VISION_MODEL` | Reused by FinAgent for market-intelligence prompts. |
 
 Sample Weaviate snippet (mirrors the proposal requirements):
@@ -44,13 +50,18 @@ print(client.is_ready())
 
 ## 3. Enabling the FinAgent DAG
 1. Ensure `.env` has `FINAGENT_ENABLED=true`.
-2. Restart Airflow services so the new DAG (`finagent_trading_signal_workflow`) is loaded.
-3. In the Airflow UI, trigger the DAG manually or schedule it (e.g., `0 13 * * 1-5`).
+2. Restart Airflow services so the DAGs are loaded:
+   - `finagent_trading_signal_workflow` (existing / adapted prompts)
+   - `finagent_paper_v3_workflow` (paper-v3 prompt templates + NewsAPI)
+   - `finagent_autogen_pipeline_workflow` (AutoGen multi-agent pipeline with optional train/backtest + inference)
+3. In the Airflow UI, trigger the desired DAG manually or schedule it (e.g., `0 13 * * 1-5`).
 4. Provide strategy parameters (via the backend UI or DB) with `workflow_type="finagent_multi_modal"`.
 
 ## 4. Data & Metadata Flow
 1. **IBKR data fetch** – the DAG calls `IBKRClient` for fresh OHLCV bars, generates charts through `webapp/services/chart_service.py`, and snapshots the result in Neon.
-2. **FinAgent runner** – builds market-intelligence prompts, interacts with Weaviate (vector memory), executes dual reflections, and compares RL baselines. Prompts/responses are archived in the Neon database for auditing.
+2. **FinAgent runner** – builds market-intelligence prompts, interacts with Weaviate (vector memory), executes dual reflections, and compares RL baselines.
+   - For `finagent_paper_v3_workflow`, “latest market intelligence” is fetched from NewsAPI when `NEWS_API_KEY` is configured.
+   - Prompts/responses are archived in the Neon database for auditing (when `NEON_DATABASE` is configured).
 3. **MLflow logging** – parameters, metrics (PnL deltas, Sharpe estimates, confidence), prompts, and chart artifacts are logged via `mlflow_run_context`.
 4. **Artifact storage** – final BUY/SELL/HOLD signals, reasoning summaries, RL comparisons, and chart URLs are published through the backend artifact API so the dashboard can display them.
 

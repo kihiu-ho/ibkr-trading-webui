@@ -24,3 +24,13 @@ anthropic
 ib-insync
 minio
 weaviate-client
+autogen-core
+autogen-agentchat
+autogen-ext[openai]
+yfinance
+sec_api
+torch
+gym
+iopath
+psutil
+prettytable

@@ -1,0 +1,6 @@
+# Ignore support modules that are imported by DAGs but are not DAG definitions.
+models/*
+utils/*
+shared/*
+__pycache__/*
+

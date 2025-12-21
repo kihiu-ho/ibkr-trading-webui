@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Test script to debug the workflow symbol creation API"""
+"""Test script with detailed error logging"""
 import json
 import requests
+import traceback
 
 API_URL = "http://localhost:8000/api/workflow-symbols/"
 
 test_payload = {
-    "symbol": "DEBG",
-    "name": "Debug Test Stock",
+    "symbol": "TESTERR",
+    "name": "Test Error Stock",
     "priority": 0,
     "enabled": True,
-    "conid": 999888,
+    "conid": 123456,
     "workflows": [{
         "dag_id": "finagent_trading_signal_workflow",
         "is_active": True,
@@ -24,17 +25,25 @@ test_payload = {
 }
 
 print("Testing POST to", API_URL)
-print("Payload:", json.dumps(test_payload, indent=2))
-print("\n" + "="*50)
+print("="*60)
 
 try:
     response = requests.post(API_URL, json=test_payload, timeout=10)
-    print(f"\nStatus Code: {response.status_code}")
-    print(f"Response Headers: {dict(response.headers)}")
+    print(f"\n✓ Status Code: {response.status_code}")
     print(f"\nResponse Body:")
     try:
-        print(json.dumps(response.json(), indent=2))
+        resp_json = response.json()
+        print(json.dumps(resp_json, indent=2))
     except:
         print(response.text)
+        
+    if response.status_code == 500:
+        print("\n❌ 500 Internal Server Error - Check backend logs for details")
+    elif response.status_code >= 400:
+        print(f"\n❌ Error {response.status_code}")
+    else:
+        print("\n✅ Success!")
+        
 except Exception as e:
     print(f"\n❌ Request failed: {e}")
+    traceback.print_exc()

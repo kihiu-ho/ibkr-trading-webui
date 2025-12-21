@@ -4,11 +4,21 @@ Fetches stock data (TSLA, NVDA) from PostgreSQL and tracks runs in MLflow
 Supports debug mode for detailed logging and diagnostics
 """
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.utils.dates import days_ago
 import logging
 import os
+import sys
+
+# Ensure Airflow can import local `models/` and `utils/` packages regardless of how the DAG is executed.
+sys.path.append(os.path.dirname(__file__))
+
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+
+try:
+    from airflow.utils.dates import days_ago as _days_ago
+except Exception:  # pragma: no cover - Airflow 3 compatibility
+    def _days_ago(days: int) -> datetime:
+        return datetime.utcnow() - timedelta(days=days)
 
 from utils.config import config
 from utils.database import db_client
@@ -677,16 +687,23 @@ def llm_analysis(**context):
 
 
 # Define the DAG
-with DAG(
-    'ibkr_stock_data_workflow',
+_dag_kwargs = dict(
+    dag_id='ibkr_stock_data_workflow',
     default_args=default_args,
     description='IBKR Stock Data Workflow - Fetch TSLA/NVDA data from PostgreSQL with MLflow tracking',
-    schedule_interval=None,  # Manual trigger only (set to '@daily' or cron for scheduled runs)
-    start_date=days_ago(1),
+    start_date=_days_ago(1),
     catchup=False,  # Don't run historical DAG runs
     tags=['ibkr', 'stock-data', 'mlflow', 'postgres'],
     max_active_runs=1,  # Only one run at a time
-) as dag:
+)
+
+# Airflow 3: uses `schedule`; Airflow 2: still supports `schedule_interval`.
+try:
+    dag = DAG(**_dag_kwargs, schedule=None)  # Manual trigger only (set to '@daily' or cron for scheduled runs)
+except TypeError:  # pragma: no cover
+    dag = DAG(**_dag_kwargs, schedule_interval=None)
+
+with dag:
     
     # Task 1: Extract stock data from PostgreSQL
     extract_task = PythonOperator(
@@ -780,4 +797,3 @@ with DAG(
     
     # Define task dependencies
     extract_task >> validate_task >> transform_task >> generate_charts_task >> llm_analysis_task >> mlflow_task
-

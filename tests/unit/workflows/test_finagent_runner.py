@@ -1,3 +1,10 @@
+import os
+import sys
+
+# Ensure Airflow-style DAG imports work in unit tests.
+sys.path.append(os.path.abspath("."))
+sys.path.append(os.path.abspath("dags"))
+
 import math
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -59,9 +66,11 @@ def test_finagent_runner_generates_signal(tmp_path):
 
     signal = result["signal"]
     assert signal.symbol == market_data.symbol
-    assert signal.reasoning.startswith("Decision Module Summary")
+    assert "market intelligence" in signal.reasoning.lower() or "decision" in signal.reasoning.lower()
     assert signal.confidence_score >= 0
     assert signal.model_used == runner.model_name
     assert "reflections" in result["llm_artifact"]
+    assert "stages" in result["llm_artifact"]
+    assert "decision" in result["llm_artifact"]["stages"]
     assert "baseline" in result
     assert "finagent_expected_return" in result["metrics"]

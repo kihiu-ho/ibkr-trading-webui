@@ -4,13 +4,23 @@ Processes TSLA and NVDA in parallel: Market Data → Charts → LLM Analysis →
 """
 from datetime import datetime, timedelta
 from typing import List
+import logging
+import os
+import sys
+from decimal import Decimal
+
+# Ensure Airflow can import local `models/` and `utils/` packages regardless of how the DAG is executed.
+sys.path.append(os.path.dirname(__file__))
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
-from airflow.utils.dates import days_ago
-import logging
-import os
-from decimal import Decimal
+
+try:
+    from airflow.utils.dates import days_ago as _days_ago
+except Exception:  # pragma: no cover - Airflow 3 compatibility
+    def _days_ago(days: int) -> datetime:
+        return datetime.utcnow() - timedelta(days=days)
 
 # Import models
 from models.market_data import MarketData, OHLCVBar
@@ -698,16 +708,23 @@ def log_to_mlflow_task(**context):
 
 
 # Define the DAG
-with DAG(
-    'ibkr_multi_symbol_workflow',
+_dag_kwargs = dict(
+    dag_id='ibkr_multi_symbol_workflow',
     default_args=default_args,
     description='IBKR Multi-Symbol Trading Workflow - TSLA and NVDA in parallel',
-    schedule_interval=WORKFLOW_SCHEDULE,
-    start_date=days_ago(1),
+    start_date=_days_ago(1),
     catchup=False,
     tags=['ibkr', 'trading', 'llm', 'signals', 'multi-symbol', 'nasdaq'],
     max_active_runs=1,
-) as dag:
+)
+
+# Airflow 3: uses `schedule`; Airflow 2: still supports `schedule_interval`.
+try:
+    dag = DAG(**_dag_kwargs, schedule=WORKFLOW_SCHEDULE)
+except TypeError:  # pragma: no cover
+    dag = DAG(**_dag_kwargs, schedule_interval=WORKFLOW_SCHEDULE)
+
+with dag:
     
     # Create task groups for each symbol
     symbol_groups = {}

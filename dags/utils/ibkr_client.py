@@ -336,14 +336,17 @@ class IBKRClient:
             contract = Stock(order.symbol, 'SMART', 'USD')
             
             # Create IB order
-            if order.order_type == OrderType.MARKET:
+            # Handle both enum and string values
+            side_str = order.side.value if hasattr(order.side, 'value') else order.side
+            
+            if order.order_type == OrderType.MARKET or str(order.order_type) == "MARKET":
                 ib_order = MarketOrder(
-                    action=order.side.value,
+                    action=side_str,
                     totalQuantity=order.quantity
                 )
-            elif order.order_type == OrderType.LIMIT:
+            elif order.order_type == OrderType.LIMIT or str(order.order_type) == "LIMIT":
                 ib_order = LimitOrder(
-                    action=order.side.value,
+                    action=side_str,
                     totalQuantity=order.quantity,
                     lmtPrice=float(order.limit_price)
                 )
@@ -378,16 +381,22 @@ class IBKRClient:
                 raise ValueError(f"Could not resolve conid for {order.symbol}")
             
             # Construct payload
+            # Handle both enum and string values (Pydantic use_enum_values=True converts to strings)
+            order_type_str = order.order_type.value if hasattr(order.order_type, 'value') else order.order_type
+            side_str = order.side.value if hasattr(order.side, 'value') else order.side
+            
             order_payload = {
                 "conid": conid,
-                "orderType": order.order_type.value,
-                "side": order.side.value,
+                "orderType": order_type_str,
+                "side": side_str,
                 "quantity": float(order.quantity),
                 "tif": "DAY",
                 "outsideRTH": True
             }
             
-            if order.order_type == OrderType.LIMIT:
+            # Check if it's a LIMIT order (handle both enum and string)
+            is_limit = order.order_type == OrderType.LIMIT or order_type_str == "LIMIT"
+            if is_limit:
                 if not order.limit_price:
                     raise ValueError("Limit price required for LIMIT order")
                 order_payload["price"] = float(order.limit_price)

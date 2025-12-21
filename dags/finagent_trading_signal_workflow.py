@@ -4,11 +4,15 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+
+# Ensure Airflow can import local `models/` and `utils/` packages regardless of how the DAG is executed.
+sys.path.append(os.path.dirname(__file__))
 
 from models.market_data import MarketData
 from utils.artifact_storage import attach_artifact_lineage, store_artifact
@@ -99,7 +103,10 @@ def _log_finagent_results(**context):
                 "symbol": symbol,
                 "finagent_reflection_rounds": config.finagent_reflection_rounds,
                 "finagent_toolkit": ",".join(config.finagent_toolkit),
+                "llm_provider": config.llm_provider,
                 "model_used": config.llm_model,
+                "vision_model_used": config.llm_vision_model,
+                "finagent_prompts_source": "arxiv:2402.18485v3",
             }
         )
         tracker.log_metrics(payload["metrics"])
@@ -199,16 +206,23 @@ def _persist_finagent_signal(**context):
     }
 
 
-with DAG(
+_dag_kwargs = dict(
     dag_id=DAG_ID,
     description="FinAgent multimodal trading signal workflow",
     default_args=DEFAULT_ARGS,
-    schedule_interval=None,
     start_date=datetime(2024, 1, 1),
     catchup=False,
     max_active_runs=1,
     tags=["finagent", "ibkr", "mlflow"],
-) as dag:
+)
+
+# Airflow 3: uses `schedule`; Airflow 2: still supports `schedule_interval`.
+try:
+    dag = DAG(**_dag_kwargs, schedule=None)
+except TypeError:  # pragma: no cover
+    dag = DAG(**_dag_kwargs, schedule_interval=None)
+
+with dag:
     prepare_task = PythonOperator(task_id="prepare_finagent_inputs", python_callable=_prepare_finagent_inputs)
     run_task = PythonOperator(task_id="run_finagent_agent", python_callable=_run_finagent_agent)
     log_task = PythonOperator(task_id="log_finagent_results", python_callable=_log_finagent_results)

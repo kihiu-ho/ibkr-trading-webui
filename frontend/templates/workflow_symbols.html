@@ -17,7 +17,7 @@
                 class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">
                 <i class="fa fa-sync mr-2"></i> Refresh
             </button>
-            <button @click="toggleAddForm()"
+            <button @click="openAddModal()"
                 class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700">
                 <i class="fa fa-plus mr-2"></i>
                 Add Symbol
@@ -44,141 +44,316 @@
         </div>
     </div>
 
-    <!-- Inline Add Form -->
-    <div x-show="showAddForm" x-transition class="bg-white rounded-xl shadow border border-blue-100 overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200 bg-blue-50 flex justify-between items-center">
-            <h3 class="text-lg font-semibold text-blue-900">Add New Symbol</h3>
-            <button @click="toggleAddForm()" class="text-blue-500 hover:text-blue-700">
-                <i class="fa fa-times"></i>
-            </button>
+    <!-- Inline Add Form Removed -->
+
+
+
+
+    <template x-if="toast">
+        <div x-cloak class="rounded-md border p-4 flex gap-3" :class="toastClasses(toast.variant)">
+            <div class="flex-shrink-0">
+                <i :class="toastIcon(toast.variant)"></i>
+            </div>
+            <div>
+                <p class="text-sm font-medium" x-text="toast.message"></p>
+            </div>
         </div>
-        <form @submit.prevent="saveSymbol" class="flex flex-col">
-            <div class="p-6 space-y-6">
-                <!-- Step 1: Details -->
-                <div class="grid gap-6 md:grid-cols-2">
-                    <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Symbol Lookup *</label>
-                        <div class="flex gap-2">
-                            <input type="text" x-model="symbolSearch"
-                                class="flex-1 border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 uppercase"
-                                placeholder="Enter symbol (e.g., AAPL)" @keyup.enter="searchSymbol()">
-                            <button type="button" @click="searchSymbol()" :disabled="searching"
-                                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">
-                                <i class="fa" :class="searching ? 'fa-spinner fa-spin' : 'fa-search'"></i>
-                                <span class="ml-2">Search</span>
-                            </button>
-                        </div>
+    </template>
 
-                        <!-- Search Results -->
-                        <div x-show="searchResults.length > 0"
-                            class="mt-2 border border-gray-200 rounded-md max-h-48 overflow-y-auto">
-                            <template x-for="contract in searchResults" :key="contract.conid">
-                                <button type="button" @click="selectContract(contract)"
-                                    class="w-full text-left px-4 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0">
-                                    <div class="flex justify-between items-center">
-                                        <div>
-                                            <div class="font-semibold text-gray-900" x-text="contract.symbol"></div>
-                                            <div class="text-xs text-gray-500" x-text="contract.description"></div>
-                                        </div>
-                                        <div class="text-xs text-gray-400">
-                                            <div>ConID: <span x-text="contract.conid"></span></div>
-                                            <div x-text="contract.exchange"></div>
-                                        </div>
-                                    </div>
-                                </button>
-                            </template>
-                        </div>
+    <div class="bg-white rounded-xl shadow border border-gray-100 overflow-hidden">
+        <div
+            class="px-6 py-4 border-b border-gray-200 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div class="flex items-center gap-4">
+                <h3 class="text-lg font-semibold text-gray-900">Symbol Catalog</h3>
+                <span class="px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium"
+                    x-text="`${filteredSymbols.length}`"></span>
+            </div>
 
-                        <!-- Selected Contract Info -->
-                        <div x-show="form.conid" class="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <div class="text-sm font-semibold text-green-900">
-                                        <i class="fa fa-check-circle text-green-600 mr-1"></i>
-                                        <span x-text="form.symbol"></span> - <span x-text="form.name"></span>
-                                    </div>
-                                    <div class="text-xs text-green-700">ConID: <span x-text="form.conid"></span></div>
-                                </div>
-                                <button type="button" @click="clearContract()"
-                                    class="text-green-600 hover:text-green-800">
-                                    <i class="fa fa-times"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Display Name</label>
-                        <input type="text" x-model="form.name"
-                            class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="Tesla Inc." :readonly="form.conid">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Priority</label>
-                        <input type="number" x-model.number="form.priority"
-                            class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                    </div>
+            <div class="flex flex-col gap-3 md:flex-row md:items-center">
+                <div class="flex flex-wrap gap-2">
+                    <select class="border-gray-300 rounded-md text-sm py-1.5 pl-3 pr-8" x-model="filters.status"
+                        aria-label="Filter by status">
+                        <option value="all">All Status</option>
+                        <option value="enabled">Enabled</option>
+                        <option value="disabled">Disabled</option>
+                    </select>
+                    <select class="border-gray-300 rounded-md text-sm py-1.5 pl-3 pr-8" x-model="filters.workflow"
+                        aria-label="Filter by workflow">
+                        <option value="all">All Workflows</option>
+                        <template x-for="workflow in workflows" :key="workflow.id">
+                            <option :value="workflow.id" x-text="workflow.name"></option>
+                        </template>
+                    </select>
+                    <select class="border-gray-300 rounded-md text-sm py-1.5 pl-3 pr-8" x-model="filters.coverage"
+                        aria-label="Filter by coverage">
+                        <option value="all">All Coverage</option>
+                        <option value="assigned">Has workflows</option>
+                        <option value="unassigned">Needs workflows</option>
+                    </select>
                 </div>
-
-                <!-- Step 2: Workflows -->
-                <div class="border-t pt-6">
-                    <h4 class="text-sm font-semibold text-gray-700 mb-4">Assign Workflows</h4>
-                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[400px]">
-                        <!-- Available Workflows -->
-                        <div class="lg:col-span-4 flex flex-col border-r border-gray-200 pr-4">
-                            <div class="relative mb-3">
-                                <input type="search" x-model="workflowFilters.search" placeholder="Search workflows..."
-                                    class="w-full border border-gray-300 rounded-md pl-9 pr-3 py-2 text-sm">
-                                <i class="fa fa-search absolute left-3 top-2.5 text-gray-400"></i>
-                            </div>
-                            <div class="flex-1 overflow-y-auto space-y-2 pr-2">
-                                <template x-for="workflow in filteredWorkflows" :key="workflow.id">
-                                    <button type="button"
-                                        class="w-full text-left p-3 rounded-lg border transition group"
-                                        :class="isWorkflowSelected(workflow.id) ? 'bg-gray-50 border-gray-200 opacity-50 cursor-not-allowed' : 'bg-white border-gray-200 hover:border-blue-400 hover:shadow-sm'"
-                                        @click="addWorkflow(workflow)" :disabled="isWorkflowSelected(workflow.id)">
-                                        <div class="flex items-center justify-between">
-                                            <div class="flex-1">
-                                                <div class="text-sm font-medium text-gray-900" x-text="workflow.name">
+                <div class="relative w-full md:w-64">
+                    <input type="search" x-model="filters.search" placeholder="Search..."
+                        class="w-full border border-gray-300 rounded-md pl-9 pr-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500">
+                    <i class="fa fa-search absolute left-3 top-2.5 text-gray-400 text-xs"></i>
+                </div>
+            </div>
+        </div>
+        <div x-show="loading" class="p-10 text-center text-gray-500">
+            <i class="fa fa-spinner fa-spin text-2xl mb-2"></i>
+            <p>Loading symbols…</p>
+        </div>
+        <div x-show="!loading && error" class="p-10 text-center text-red-600">
+            <p class="mb-3">Failed to load symbols.</p>
+            <button @click="loadSymbols" class="text-blue-600 hover:underline">Retry</button>
+        </div>
+        <div x-show="!loading && filteredSymbols.length === 0 && !error" class="p-10 text-center text-gray-500">
+            <i class="fa fa-inbox text-4xl mb-3 text-gray-300"></i>
+            <p>No symbols match the filters.</p>
+        </div>
+        <div x-show="!loading && filteredSymbols.length > 0" class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Symbol</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Primary Workflow</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Workflows</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Priority</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Status</th>
+                        <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <template x-for="symbol in filteredSymbols" :key="symbol.id">
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <div class="text-sm font-semibold text-gray-900" x-text="symbol.symbol"></div>
+                                <div class="text-xs text-gray-500" x-text="symbol.name || '—'"></div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <template x-if="symbol.workflows && symbol.workflows.length">
+                                    <div>
+                                        <div class="text-sm font-semibold text-gray-900"
+                                            x-text="symbol.workflows[0].workflow_name || symbol.workflows[0].workflow_id">
+                                        </div>
+                                        <div class="text-xs text-gray-500"
+                                            x-text="symbol.workflows[0].timezone || 'America/New_York'"></div>
+                                        <div class="text-xs text-gray-500"
+                                            x-show="symbol.workflows[0].session_start && symbol.workflows[0].session_end"
+                                            x-text="`${symbol.workflows[0].session_start} - ${symbol.workflows[0].session_end}`">
+                                        </div>
+                                    </div>
+                                </template>
+                                <template x-if="!symbol.workflows || symbol.workflows.length === 0">
+                                    <div class="text-xs text-gray-500">No workflows assigned</div>
+                                </template>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                                <template x-if="symbol.workflows && symbol.workflows.length">
+                                    <div class="flex flex-wrap gap-3">
+                                        <template x-for="workflow in symbol.workflows"
+                                            :key="workflow.link_id || `${symbol.id}-${workflow.workflow_id}`">
+                                            <div class="px-3 py-2 rounded-lg border text-xs space-y-1"
+                                                :class="workflow.is_active ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-gray-50 border-gray-200 text-gray-600'">
+                                                <div class="flex items-center gap-1 font-semibold">
+                                                    <span
+                                                        x-text="workflow.workflow_name || `Workflow ${workflow.workflow_id}`"></span>
+                                                    <span class="text-[10px] font-normal px-1.5 py-0.5 rounded-full"
+                                                        :class="workflow.workflow_is_active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'">
+                                                        Airflow <span
+                                                            x-text="workflow.workflow_is_active ? 'Enabled' : 'Paused'"></span>
+                                                    </span>
                                                 </div>
-                                                <div class="text-xs text-gray-500" x-text="workflow.dag_id || 'No DAG'">
+                                                <div class="text-[11px] text-gray-600" x-text="workflow.timezone">
+                                                </div>
+                                                <div class="text-[11px] text-gray-600"
+                                                    x-show="workflow.session_start && workflow.session_end"
+                                                    x-text="`${workflow.session_start} - ${workflow.session_end}`">
+                                                </div>
+                                                <div class="text-[11px] font-semibold"
+                                                    :class="workflow.allow_weekend ? 'text-indigo-600' : 'text-gray-400'">
+                                                    <i class="fa fa-calendar-week mr-1"></i>
+                                                    <span
+                                                        x-text="workflow.allow_weekend ? 'Weekends Allowed' : 'Weekdays Only'"></span>
                                                 </div>
                                             </div>
-                                            <i class="fa fa-plus text-gray-400 group-hover:text-blue-500"
-                                                x-show="!isWorkflowSelected(workflow.id)"></i>
-                                            <i class="fa fa-check text-green-500"
-                                                x-show="isWorkflowSelected(workflow.id)"></i>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template x-if="!symbol.workflows || symbol.workflows.length === 0">
+                                    <span
+                                        class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700">
+                                        <i class="fa fa-exclamation-triangle mr-1"></i>
+                                        Unassigned
+                                    </span>
+                                </template>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-medium text-gray-900" x-text="symbol.priority"></span>
+                                    <div class="flex flex-col text-gray-400">
+                                        <button @click="changePriority(symbol, 1)" class="hover:text-blue-600"><i
+                                                class="fa fa-chevron-up"></i></button>
+                                        <button @click="changePriority(symbol, -1)" class="hover:text-blue-600"><i
+                                                class="fa fa-chevron-down"></i></button>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-2 py-1 inline-flex text-xs font-semibold rounded-full"
+                                    :class="symbol.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'"
+                                    x-text="symbol.enabled ? 'Enabled' : 'Disabled'"></span>
+                            </td>
+                            <td class="px-6 py-4 text-right text-sm font-medium">
+                                <div class="flex justify-end gap-2">
+                                    <button @click="toggleSymbol(symbol)" class="text-gray-500 hover:text-blue-600"
+                                        :title="symbol.enabled ? 'Disable' : 'Enable'">
+                                        <i :class="symbol.enabled ? 'fa fa-pause-circle' : 'fa fa-play-circle'"></i>
+                                    </button>
+                                    <button @click="openEditModal(symbol)" class="text-gray-500 hover:text-blue-600"
+                                        title="Edit">
+                                        <i class="fa fa-edit"></i>
+                                    </button>
+                                    <button @click="deleteSymbol(symbol)" class="text-gray-500 hover:text-red-600"
+                                        title="Delete">
+                                        <i class="fa fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Unified Add/Edit Modal -->
+    <template x-teleport="body">
+        <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center">
+            <div class="fixed inset-0 bg-gray-900 opacity-75" @click="closeModal"></div>
+            <div
+                class="relative bg-white rounded-lg shadow-xl w-full max-w-6xl mx-4 flex flex-col overflow-hidden"
+                style="max-height: 90vh;">
+                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                    <h3 class="text-lg font-semibold text-gray-900"
+                        x-text="editingSymbol ? 'Edit Symbol' : 'Add New Symbol'"></h3>
+                    <button @click="closeModal" class="text-gray-400 hover:text-gray-600"><i
+                            class="fa fa-times"></i></button>
+                </div>
+
+                <form @submit.prevent="saveSymbol" class="flex flex-col flex-1 overflow-hidden">
+                    <div class="p-6 space-y-6 overflow-y-auto flex-1">
+
+                        <!-- Symbol Lookup (Add Mode Only) -->
+                        <div x-show="!editingSymbol" class="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                            <label class="block text-sm font-medium text-blue-900 mb-2">Symbol Lookup *</label>
+                            <div class="flex gap-2">
+                                <input type="text" x-model="symbolSearch"
+                                    class="flex-1 border-blue-200 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 uppercase"
+                                    placeholder="Enter symbol (e.g., AAPL)" @keyup.enter="searchSymbol()">
+                                <button type="button" @click="searchSymbol()" :disabled="searching"
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 shadow-sm">
+                                    <i class="fa" :class="searching ? 'fa-spinner fa-spin' : 'fa-search'"></i>
+                                    <span class="ml-2">Search</span>
+                                </button>
+                            </div>
+
+                            <!-- Search Results -->
+                            <div x-show="searchResults.length > 0"
+                                class="mt-2 bg-white border border-gray-200 rounded-md max-h-48 overflow-y-auto shadow-lg">
+                                <template x-for="contract in searchResults" :key="contract.conid">
+                                    <button type="button" @click="selectContract(contract)"
+                                        class="w-full text-left px-4 py-3 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors">
+                                        <div class="flex justify-between items-center">
+                                            <div>
+                                                <div class="font-semibold text-gray-900" x-text="contract.symbol"></div>
+                                                <div class="text-xs text-gray-500" x-text="contract.description"></div>
+                                            </div>
+                                            <div class="text-xs text-gray-400">
+                                                <div>ConID: <span x-text="contract.conid"></span></div>
+                                                <div x-text="contract.exchange"></div>
+                                            </div>
                                         </div>
                                     </button>
                                 </template>
-                                <div x-show="filteredWorkflows.length === 0" class="text-center py-8 text-gray-500">
-                                    <i class="fa fa-inbox text-3xl mb-2"></i>
-                                    <p class="text-sm">No workflows available</p>
-                                    <p class="text-xs" x-show="workflows.length === 0">Please create workflows first</p>
-                                    <p class="text-xs" x-show="workflows.length > 0">Try adjusting your search</p>
-                                </div>
                             </div>
                         </div>
 
-                        <!-- Configured Workflows -->
-                        <div class="lg:col-span-8 flex flex-col pl-2">
-                            <div class="flex-1 overflow-y-auto space-y-4 pr-2 pb-2">
+                        <div class="grid gap-6 md:grid-cols-2">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Symbol</label>
+                                <input type="text" x-model="form.symbol" readonly
+                                    class="mt-1 w-full border-gray-300 rounded-md bg-gray-100 cursor-not-allowed">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Display Name</label>
+                                <input type="text" x-model="form.name"
+                                    class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Priority</label>
+                                <input type="number" x-model.number="form.priority"
+                                    class="mt-1 w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">ConID</label>
+                                <input type="number" x-model.number="form.conid" readonly
+                                    class="mt-1 w-full border-gray-300 rounded-md bg-gray-50 text-gray-500">
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="flex items-center gap-2">
+                                    <input type="checkbox" x-model="form.enabled"
+                                        class="rounded border-gray-300 text-blue-600 shadow-sm focus:ring-blue-500">
+                                    <span class="text-sm font-medium text-gray-700">Enabled</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="border-t border-gray-200 pt-6">
+                            <h4 class="text-base font-medium text-gray-900 mb-4">Assigned Workflows</h4>
+
+                            <!-- Workflow Selection -->
+                            <div class="flex gap-4 mb-4">
+                                <div class="flex-1">
+                                    <select x-ref="workflowSelect"
+                                        class="w-full border-gray-300 rounded-md shadow-sm text-sm">
+                                        <option value="">Select a workflow to add...</option>
+                                        <template x-for="wf in workflows" :key="wf.dag_id">
+                                            <option :value="wf.dag_id" x-text="wf.name"
+                                                :disabled="selectedWorkflows.some(w => w.dag_id === wf.dag_id)">
+                                            </option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <button type="button"
+                                    @click="if($refs.workflowSelect.value) { addWorkflow($refs.workflowSelect.value); $refs.workflowSelect.value = ''; }"
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium shadow-sm">
+                                    <i class="fa fa-plus mr-1"></i> Add
+                                </button>
+                            </div>
+
+                            <!-- Selected Workflows List -->
+                            <div class="space-y-3">
                                 <template x-for="(config, index) in selectedWorkflows" :key="config.dag_id">
-                                    <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                                        <div
-                                            class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                                            <div class="flex items-center gap-3">
-                                                <span
-                                                    class="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold"
-                                                    x-text="index + 1"></span>
-                                                <h5 class="text-sm font-bold text-gray-900"
+                                    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                        <div class="flex justify-between items-start mb-4">
+                                            <div>
+                                                <h5 class="font-medium text-gray-900"
                                                     x-text="getWorkflowName(config.dag_id)"></h5>
+                                                <p class="text-xs text-gray-500" x-text="config.dag_id"></p>
                                             </div>
                                             <button type="button" @click="removeWorkflow(index)"
-                                                class="text-gray-400 hover:text-red-500">
-                                                <i class="fa fa-trash"></i>
+                                                class="text-gray-400 hover:text-red-600">
+                                                <i class="fa fa-times"></i>
                                             </button>
                                         </div>
-                                        <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div class="md:col-span-2">
                                                 <label
                                                     class="block text-xs font-medium text-gray-700 mb-1">Timezone</label>
@@ -219,274 +394,35 @@
                                                     Interval (Cron)</label>
                                                 <input type="text" x-model="config.schedule_interval"
                                                     class="block w-full rounded-md border-gray-300 shadow-sm text-sm font-mono"
-                                                    placeholder="0 9 * * * (Daily at 9 AM)">
-                                                <p class="text-xs text-gray-500 mt-1">Examples: <code>0 9 * * *</code>
-                                                    (daily 9AM), <code>*/15 * * * *</code> (every 15min)</p>
+                                                    placeholder="0 9 * * *">
                                             </div>
                                         </div>
                                     </div>
                                 </template>
-                                <div x-show="selectedWorkflows.length === 0" class="text-center py-10 text-gray-400">
-                                    Select workflows from the left to configure.
+                                <div x-show="selectedWorkflows.length === 0"
+                                    class="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
+                                    No workflows assigned. Add one above.
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-            <div class="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
-                <button type="button" @click="toggleAddForm()"
-                    class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
-                <button type="submit"
-                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                    :disabled="saving || !canSaveSymbol">
-                    <i class="fa fa-save mr-2"></i>
-                    <span x-text="saving ? 'Saving…' : 'Save Symbol'"></span>
-                </button>
-            </div>
-        </form>
-
-
-        <div class="bg-white rounded-xl shadow border border-gray-100">
-            <div
-                class="px-6 py-4 border-b border-gray-200 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div class="flex flex-wrap gap-3">
-                    <label class="flex items-center gap-2 text-sm text-gray-600">
-                        <span>Status</span>
-                        <select class="border-gray-300 rounded-md text-sm" x-model="filters.status">
-                            <option value="all">All</option>
-                            <option value="enabled">Enabled</option>
-                            <option value="disabled">Disabled</option>
-                        </select>
-                    </label>
-                    <label class="flex items-center gap-2 text-sm text-gray-600">
-                        <span>Workflow</span>
-                        <select class="border-gray-300 rounded-md text-sm" x-model="filters.workflow">
-                            <option value="all">All</option>
-                            <template x-for="workflow in workflows" :key="workflow.id">
-                                <option :value="workflow.id" x-text="workflow.name"></option>
-                            </template>
-                        </select>
-                    </label>
-                    <label class="flex items-center gap-2 text-sm text-gray-600">
-                        <span>Coverage</span>
-                        <select class="border-gray-300 rounded-md text-sm" x-model="filters.coverage">
-                            <option value="all">All</option>
-                            <option value="assigned">Has workflows</option>
-                            <option value="unassigned">Needs workflows</option>
-                        </select>
-                    </label>
-                </div>
-                <div class="relative w-full md:w-72">
-                    <input type="search" x-model="filters.search" placeholder="Search by symbol or workflow..."
-                        class="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500">
-                    <i class="fa fa-search absolute left-3 top-2.5 text-gray-400"></i>
-                </div>
-            </div>
-        </div>
-
-        <template x-if="toast">
-            <div x-cloak class="rounded-md border p-4 flex gap-3" :class="toastClasses(toast.variant)">
-                <div class="flex-shrink-0">
-                    <i :class="toastIcon(toast.variant)"></i>
-                </div>
-                <div>
-                    <p class="text-sm font-medium" x-text="toast.message"></p>
-                </div>
-            </div>
-        </template>
-
-        <div class="bg-white rounded-xl shadow border border-gray-100 overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-gray-900">Symbol Catalog</h3>
-                <span class="text-sm text-gray-500" x-text="`${filteredSymbols.length} showing`"></span>
-            </div>
-            <div x-show="loading" class="p-10 text-center text-gray-500">
-                <i class="fa fa-spinner fa-spin text-2xl mb-2"></i>
-                <p>Loading symbols…</p>
-            </div>
-            <div x-show="!loading && error" class="p-10 text-center text-red-600">
-                <p class="mb-3">Failed to load symbols.</p>
-                <button @click="loadSymbols" class="text-blue-600 hover:underline">Retry</button>
-            </div>
-            <div x-show="!loading && filteredSymbols.length === 0 && !error" class="p-10 text-center text-gray-500">
-                <i class="fa fa-inbox text-4xl mb-3 text-gray-300"></i>
-                <p>No symbols match the filters.</p>
-            </div>
-            <div x-show="!loading && filteredSymbols.length > 0" class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th
-                                class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                Symbol</th>
-                            <th
-                                class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                Primary Workflow</th>
-                            <th
-                                class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                Workflows</th>
-                            <th
-                                class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                Priority</th>
-                            <th
-                                class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                Status</th>
-                            <th
-                                class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                        <template x-for="symbol in filteredSymbols" :key="symbol.id">
-                            <tr class="hover:bg-gray-50">
-                                <td class="px-6 py-4">
-                                    <div class="text-sm font-semibold text-gray-900" x-text="symbol.symbol"></div>
-                                    <div class="text-xs text-gray-500" x-text="symbol.name || '—'"></div>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <template x-if="symbol.workflows && symbol.workflows.length">
-                                        <div>
-                                            <div class="text-sm font-semibold text-gray-900"
-                                                x-text="symbol.workflows[0].workflow_name || symbol.workflows[0].workflow_id">
-                                            </div>
-                                            <div class="text-xs text-gray-500"
-                                                x-text="symbol.workflows[0].timezone || 'America/New_York'"></div>
-                                            <div class="text-xs text-gray-500"
-                                                x-show="symbol.workflows[0].session_start && symbol.workflows[0].session_end"
-                                                x-text="`${symbol.workflows[0].session_start} - ${symbol.workflows[0].session_end}`">
-                                            </div>
-                                        </div>
-                                    </template>
-                                    <template x-if="!symbol.workflows || symbol.workflows.length === 0">
-                                        <div class="text-xs text-gray-500">No workflows assigned</div>
-                                    </template>
-                                </td>
-                                <td class="px-6 py-4 text-sm text-gray-900">
-                                    <template x-if="symbol.workflows && symbol.workflows.length">
-                                        <div class="flex flex-wrap gap-3">
-                                            <template x-for="workflow in symbol.workflows"
-                                                :key="workflow.link_id || `${symbol.id}-${workflow.workflow_id}`">
-                                                <div class="px-3 py-2 rounded-lg border text-xs space-y-1"
-                                                    :class="workflow.is_active ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-gray-50 border-gray-200 text-gray-600'">
-                                                    <div class="flex items-center gap-1 font-semibold">
-                                                        <span
-                                                            x-text="workflow.workflow_name || `Workflow ${workflow.workflow_id}`"></span>
-                                                        <span class="text-[10px] font-normal px-1.5 py-0.5 rounded-full"
-                                                            :class="workflow.workflow_is_active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'">
-                                                            Airflow <span
-                                                                x-text="workflow.workflow_is_active ? 'Enabled' : 'Paused'"></span>
-                                                        </span>
-                                                    </div>
-                                                    <div class="text-[11px] text-gray-600" x-text="workflow.timezone">
-                                                    </div>
-                                                    <div class="text-[11px] text-gray-600"
-                                                        x-show="workflow.session_start && workflow.session_end"
-                                                        x-text="`${workflow.session_start} - ${workflow.session_end}`">
-                                                    </div>
-                                                    <div class="text-[11px] font-semibold"
-                                                        :class="workflow.allow_weekend ? 'text-indigo-600' : 'text-gray-400'">
-                                                        <i class="fa fa-calendar-week mr-1"></i>
-                                                        <span
-                                                            x-text="workflow.allow_weekend ? 'Weekends Allowed' : 'Weekdays Only'"></span>
-                                                    </div>
-                                                </div>
-                                            </template>
-                                        </div>
-                                    </template>
-                                    <template x-if="!symbol.workflows || symbol.workflows.length === 0">
-                                        <span
-                                            class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700">
-                                            <i class="fa fa-exclamation-triangle mr-1"></i>
-                                            Unassigned
-                                        </span>
-                                    </template>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-sm font-medium text-gray-900" x-text="symbol.priority"></span>
-                                        <div class="flex flex-col text-gray-400">
-                                            <button @click="changePriority(symbol, 1)" class="hover:text-blue-600"><i
-                                                    class="fa fa-chevron-up"></i></button>
-                                            <button @click="changePriority(symbol, -1)" class="hover:text-blue-600"><i
-                                                    class="fa fa-chevron-down"></i></button>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <span class="px-2 py-1 inline-flex text-xs font-semibold rounded-full"
-                                        :class="symbol.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'"
-                                        x-text="symbol.enabled ? 'Enabled' : 'Disabled'"></span>
-                                </td>
-                                <td class="px-6 py-4 text-right text-sm font-medium">
-                                    <div class="flex justify-end gap-2">
-                                        <button @click="toggleSymbol(symbol)" class="text-gray-500 hover:text-blue-600"
-                                            :title="symbol.enabled ? 'Disable' : 'Enable'">
-                                            <i :class="symbol.enabled ? 'fa fa-pause-circle' : 'fa fa-play-circle'"></i>
-                                        </button>
-                                        <button @click="openModal(symbol)" class="text-gray-500 hover:text-blue-600"
-                                            title="Edit">
-                                            <i class="fa fa-edit"></i>
-                                        </button>
-                                        <button @click="deleteSymbol(symbol)" class="text-gray-500 hover:text-red-600"
-                                            title="Delete">
-                                            <i class="fa fa-trash"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        </template>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Edit Modal (Simplified for just editing existing) -->
-        <div x-show="showModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center">
-            <div class="fixed inset-0 bg-gray-900/50" @click="closeModal"></div>
-            <div
-                class="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl mx-4 max-h-[90vh] flex flex-col overflow-hidden">
-                <!-- Simplified edit modal content here if needed, or reuse the same form logic. 
-                  For now, assuming the user wants "no pop up" for ADDING. 
-                  Editing might still use modal or we can reuse the inline form. 
-                  Let's keep the modal only for EDITING to minimize changes, but hide it for ADD. -->
-                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-                    <h3 class="text-lg font-semibold">Edit Symbol</h3>
-                    <button @click="closeModal"><i class="fa fa-times"></i></button>
-                </div>
-                <!-- Reuse the same form structure for editing if desired, or keep legacy modal for edit. 
-                  I will keep the legacy modal structure for EDITING but remove the ADD logic from it. -->
-                <form @submit.prevent="saveSymbol" class="flex flex-col flex-1 overflow-hidden">
-                    <div class="p-6 space-y-6 overflow-y-auto flex-1">
-                        <!-- Same fields as inline form -->
-                        <div class="grid gap-6 md:grid-cols-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Symbol</label>
-                                <input type="text" x-model="form.symbol" disabled
-                                    class="mt-1 w-full border-gray-300 rounded-md bg-gray-100">
-                            </div>
-                            <!-- ... other fields ... -->
-                            <!-- For brevity, I am not duplicating the entire form here. 
-                             The user asked to remove the popup for "Add Symbol" button. 
-                             I will assume editing can still be a popup or I should have refactored everything to use the inline form.
-                             To be safe and clean, I'll just hide the modal code I'm replacing and rely on the inline form for ADD.
-                             For EDIT, I'll update the openModal to populate the inline form and scroll to it? 
-                             Or keep the modal for edit. Let's keep modal for edit for now to avoid breaking edit flow completely, 
-                             but the "Add Symbol" button now toggles the inline form. -->
-                            <div class="text-center p-10">
-                                <p>Editing is currently only supported via the inline form. (Refactoring in progress)
-                                </p>
-                                <!-- Actually, let's just use the inline form for editing too! -->
-                            </div>
-                        </div>
+                    <div class="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
+                        <button type="button" @click="closeModal"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
+                        <button type="submit"
+                            class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                            :disabled="saving">
+                            <i class="fa fa-save mr-2"></i>
+                            <span x-text="saving ? 'Saving…' : 'Save Changes'"></span>
+                        </button>
                     </div>
                 </form>
             </div>
         </div>
-
-    </div>
+    </template>
 
     <script>
+
         function workflowSymbols() {
             return {
                 symbols: [],
@@ -496,7 +432,7 @@
                 toast: null,
                 toastTimeout: null,
                 showModal: false,
-                showAddForm: false,
+                // showAddForm: false, // Removed
                 modalStep: 1,
                 editingSymbol: null,
                 saving: false,
@@ -560,7 +496,8 @@
                 },
                 selectContract(contract) {
                     this.form.symbol = contract.symbol;
-                    this.form.name = contract.description;
+                    // Automatically set display name as requested: SYMBOL - Description
+                    this.form.name = `${contract.symbol} - ${contract.description}`;
                     this.form.conid = contract.conid;
                     this.symbolSearch = contract.symbol;
                     this.searchResults = [];
@@ -674,11 +611,38 @@
                         this.loading = false;
                     }
                 },
-                toggleAddForm() {
-                    this.showAddForm = !this.showAddForm;
-                    if (this.showAddForm) {
-                        this.resetForm();
-                    }
+                openAddModal() {
+                    this.resetForm();
+                    this.editingSymbol = null;
+                    this.showModal = true;
+                },
+                openEditModal(symbol) {
+                    this.editingSymbol = symbol;
+                    this.form = {
+                        symbol: symbol.symbol,
+                        name: symbol.name,
+                        priority: symbol.priority,
+                        enabled: symbol.enabled,
+                        conid: symbol.conid
+                    };
+
+                    // Deep copy workflows to avoid modifying original until save
+                    this.selectedWorkflows = (symbol.workflows || []).map(w => ({
+                        dag_id: w.dag_id || w.workflow_id, // Handle both formats if needed
+                        timezone: w.timezone || 'America/New_York',
+                        session_start: w.session_start || '',
+                        session_end: w.session_end || '',
+                        allow_weekend: w.allow_weekend || false,
+                        is_active: w.is_active !== undefined ? w.is_active : true,
+                        schedule_interval: w.schedule_interval || ''
+                    }));
+
+                    this.showModal = true;
+                },
+                closeModal() {
+                    this.showModal = false;
+                    this.resetForm();
+                    this.editingSymbol = null;
                 },
                 resetForm() {
                     this.form = {
@@ -690,49 +654,6 @@
                     };
                     this.selectedWorkflows = [];
                     this.editingSymbol = null;
-                },
-                openModal(symbol = null) {
-                    // Legacy modal used for editing only now
-                    this.modalStep = 1;
-                    this.editingSymbol = symbol;
-                    if (symbol) {
-                        this.form = {
-                            symbol: symbol.symbol,
-                            name: symbol.name || '',
-                            priority: symbol.priority,
-                            enabled: Boolean(symbol.enabled),
-                            workflow_type: symbol.workflow_type || 'trading_signal'
-                        };
-                        this.selectedWorkflows = (symbol.workflows || []).map((workflow) => this.hydrateWorkflowConfig(workflow));
-                        // Use the inline form for editing too, it's cleaner
-                        // Map existing workflows to config objects
-                        this.selectedWorkflows = (symbol.workflows || []).map(wf => ({
-                            workflow_id: wf.id,
-                            is_active: wf.link_active !== undefined ? wf.link_active : true,
-                            priority: wf.priority || 0,
-                            timezone: wf.timezone || 'America/New_York',
-                            session_start: this.toTimeInput(wf.session_start) || '09:30',
-                            session_end: this.toTimeInput(wf.session_end) || '16:00',
-                            allow_weekend: Boolean(wf.allow_weekend),
-                            config_json: wf.config ? JSON.stringify(wf.config, null, 2) : '',
-                            json_error: null
-                        }));
-                    } else {
-                        this.form = {
-                            symbol: '',
-                            name: '',
-                            priority: 0,
-                            enabled: true
-                        };
-                        this.selectedWorkflows = [];
-                    }
-                    this.showModal = true;
-                },
-                closeModal() {
-                    this.showModal = false;
-                    this.editingSymbol = null;
-                    this.modalStep = 1;
-                    this.selectedWorkflows = [];
                 },
                 toTimeInput(value) {
                     if (!value) return null;
@@ -753,8 +674,12 @@
                 isWorkflowSelected(id) {
                     return this.selectedWorkflows.some(w => w.dag_id === id);
                 },
-                addWorkflow(workflow) {
-                    if (this.isWorkflowSelected(workflow.id)) return;
+                addWorkflow(workflowOrId) {
+                    let workflow = workflowOrId;
+                    if (typeof workflowOrId === 'string') {
+                        workflow = this.workflows.find(w => w.dag_id === workflowOrId);
+                    }
+                    if (!workflow || this.isWorkflowSelected(workflow.dag_id)) return;
 
                     this.selectedWorkflows.push({
                         dag_id: workflow.dag_id,
@@ -887,7 +812,7 @@
                         if (this.editingSymbol) {
                             this.closeModal();
                         } else {
-                            this.toggleAddForm();
+                            this.closeModal();
                         }
                     } catch (err) {
                         this.showToast(err.message, 'error');
@@ -959,4 +884,3 @@
     </script>
 
     {% endblock %}
-    ```
