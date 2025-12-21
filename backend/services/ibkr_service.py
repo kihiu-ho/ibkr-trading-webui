@@ -2,13 +2,21 @@
 import httpx
 from typing import Dict, Any, Optional, List
 from backend.config.settings import settings
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 import logging
 import asyncio
 from urllib.parse import urlencode
 import json
 
 logger = logging.getLogger(__name__)
+
+
+def _should_retry_ibkr_request(exc: BaseException) -> bool:
+    """Retry only on transient failures (network/timeouts/5xx/429)."""
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        status_code = exc.response.status_code
+        return status_code >= 500 or status_code in (408, 429)
+    return isinstance(exc, httpx.TransportError)
 
 
 class IBKRService:
@@ -19,7 +27,11 @@ class IBKRService:
         self.account_id = settings.IBKR_ACCOUNT_ID
         self.timeout = 30.0
     
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception(_should_retry_ibkr_request),
+    )
     async def _request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """Make HTTP request to IBKR API with retry logic."""
         url = f"{self.base_url}{endpoint}"
@@ -35,7 +47,13 @@ class IBKRService:
     
     async def check_auth_status(self) -> Dict[str, Any]:
         """Check authentication status."""
-        return await self._request("GET", "/iserver/auth/status")
+        try:
+            return await self._request("GET", "/iserver/auth/status")
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status in (401, 403):
+                return {"authenticated": False, "connected": False}
+            raise
     
     async def reauthenticate(self) -> Dict[str, Any]:
         """Trigger reauthentication."""

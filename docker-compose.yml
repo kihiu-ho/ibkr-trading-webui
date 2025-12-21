@@ -16,7 +16,7 @@ x-common-variables: &common-env
   REDIS_URL: "redis://redis:6379/0"
   CELERY_BROKER_URL: "redis://redis:6379/0"
   CELERY_RESULT_BACKEND: "redis://redis:6379/1"
-  IBKR_API_BASE_URL: "https://ibkr-gateway:443/v1/api"
+  IBKR_API_BASE_URL: "https://ibkr-gateway:5055/v1/api"
   IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
   IBKR_SSL_VERIFY: "false"
   MINIO_ENDPOINT: "minio:9000"
@@ -88,8 +88,8 @@ x-airflow-common: &airflow-common
     # Chart storage directory (shared volume)
     CHARTS_DIR: "/app/charts"
     # IBKR Client Portal configuration shared with Airflow
-    IBKR_API_BASE_URL: ${IBKR_API_BASE_URL:-https://ibkr-gateway:443/v1/api}
-    IBKR_API_BASE_URL_INTERNAL: ${IBKR_API_BASE_URL_INTERNAL:-https://ibkr-gateway:443/v1/api}
+    IBKR_API_BASE_URL: ${IBKR_API_BASE_URL:-https://ibkr-gateway:5055/v1/api}
+    IBKR_API_BASE_URL_INTERNAL: ${IBKR_API_BASE_URL_INTERNAL:-https://ibkr-gateway:5055/v1/api}
     IBKR_SSL_VERIFY: ${IBKR_SSL_VERIFY:-false}
     IBKR_PRIMARY_CONID: ${IBKR_PRIMARY_CONID:-}
     # Workflow configuration
@@ -227,9 +227,10 @@ services:
     container_name: ibkr-gateway
     environment:
       IBKR_ACCOUNT_ID: "${IBKR_ACCOUNT_ID:-DU1234567}"
+      GATEWAY_LISTEN_PORT: "5055"
     ports:
-      - "5055:443"   # IBKR Gateway API (container listens on 443)
-      - "5056:5056"  # IBKR Gateway Web Interface
+      - "127.0.0.1:5055:5055"  # IBKR Gateway API (localhost only)
+      - "127.0.0.1:5056:5056"  # IBKR Gateway Web Interface (localhost only)
     volumes:
       - ./conf.yaml:/app/gateway/root/conf.yaml:ro
     networks:
@@ -245,7 +246,7 @@ services:
           memory: 512M
           cpus: '0.5'
     healthcheck:
-      test: ["CMD-SHELL", "curl -sk https://localhost:443/v1/api/tickle >/dev/null"]
+      test: ["CMD-SHELL", "curl -sk https://localhost:5055/v1/api/tickle >/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 3

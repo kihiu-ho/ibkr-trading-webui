@@ -2,8 +2,8 @@
 # Start IBKR Client Portal Gateway
 set -euo pipefail
 
-PORT="${GATEWAY_LISTEN_PORT:-443}"
-echo "Starting IBKR Client Portal Gateway (internal port ${PORT}, external port 5055)"
+PORT="${GATEWAY_LISTEN_PORT:-5055}"
+echo "Starting IBKR Client Portal Gateway (listen port ${PORT}, external port 5055)"
 
 cd gateway
 

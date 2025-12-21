@@ -27,15 +27,21 @@ echo ""
 
 # Check if gateway API is responding
 echo -e "${BLUE}2. Checking if Gateway API is responding...${NC}"
-TICKLE_RESPONSE=$(curl -k -s https://localhost:5055/v1/api/tickle)
-if [ -n "$TICKLE_RESPONSE" ]; then
-    echo -e "   ${GREEN}✓ Gateway API is responding${NC}"
-    echo -e "   Response: ${TICKLE_RESPONSE}"
-    if echo "$TICKLE_RESPONSE" | grep -qi "access denied"; then
+TICKLE_URL="https://localhost:5055/v1/api/tickle"
+TICKLE_RESULT=$(curl -k -s -w "\n%{http_code}" "$TICKLE_URL")
+TICKLE_HTTP_CODE=$(echo "$TICKLE_RESULT" | tail -n 1)
+TICKLE_BODY=$(echo "$TICKLE_RESULT" | sed '$d')
+
+if [ "$TICKLE_HTTP_CODE" != "000" ]; then
+    echo -e "   ${GREEN}✓ Gateway API is responding${NC} (HTTP ${TICKLE_HTTP_CODE})"
+    if [ -n "$TICKLE_BODY" ]; then
+        echo -e "   Response: ${TICKLE_BODY}"
+    fi
+    if [ "$TICKLE_HTTP_CODE" = "401" ] || [ "$TICKLE_HTTP_CODE" = "403" ] || echo "$TICKLE_BODY" | grep -qi "access denied"; then
         echo ""
-        echo -e "   ${YELLOW}Access Denied means the gateway is up but not authenticated.${NC}"
+        echo -e "   ${YELLOW}Access denied/unauthorized means the gateway is up but not authenticated.${NC}"
         echo "   Fix: Open https://localhost:5055 in your browser, accept the TLS warning,"
-        echo "        and complete the IBKR login. Then rerun this script."
+        echo "        and complete the IBKR login (including 2FA). Then rerun this script."
     fi
 else
     echo -e "   ${RED}✗ Gateway API is NOT responding${NC}"
@@ -46,10 +52,13 @@ echo ""
 
 # Check authentication status
 echo -e "${BLUE}3. Checking authentication status...${NC}"
-AUTH_RESPONSE=$(curl -k -s https://localhost:5055/v1/api/iserver/auth/status)
+AUTH_URL="https://localhost:5055/v1/api/iserver/auth/status"
+AUTH_RESULT=$(curl -k -s -w "\n%{http_code}" "$AUTH_URL")
+AUTH_HTTP_CODE=$(echo "$AUTH_RESULT" | tail -n 1)
+AUTH_RESPONSE=$(echo "$AUTH_RESULT" | sed '$d')
 
 # Handle "Access Denied" which means not authenticated
-if echo "$AUTH_RESPONSE" | grep -qi "access denied"; then
+if [ "$AUTH_HTTP_CODE" = "401" ] || [ "$AUTH_HTTP_CODE" = "403" ] || echo "$AUTH_RESPONSE" | grep -qi "access denied"; then
     echo -e "   ${RED}✗ NOT AUTHENTICATED${NC}"
     echo -e "   ${YELLOW}The gateway is running but requires authentication.${NC}"
     echo ""
@@ -104,6 +113,9 @@ elif echo "$AUTH_RESPONSE" | grep -q "authenticated.*false"; then
     exit 1
 else
     echo -e "   ${YELLOW}⚠ UNEXPECTED RESPONSE${NC}"
+    if [ "$AUTH_HTTP_CODE" != "000" ]; then
+        echo -e "   HTTP: ${AUTH_HTTP_CODE}"
+    fi
     echo -e "   Response: ${AUTH_RESPONSE}"
     echo ""
     echo "The gateway might still be starting up."
