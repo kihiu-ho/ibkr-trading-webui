@@ -28,6 +28,11 @@ LOG_DIR="$PROJECT_ROOT/logs"
 BUILD_META_DIR="$PROJECT_ROOT/.ibkr-build"
 BACKEND_REQUIREMENTS_PATH="$PROJECT_ROOT/backend/requirements.txt"
 BACKEND_REQUIREMENTS_HASH_FILE="$BUILD_META_DIR/backend_requirements.sha"
+AIRFLOW_REQUIREMENTS_PATH="$PROJECT_ROOT/airflow/requirements-airflow.txt"
+AIRFLOW_REQUIREMENTS_HASH_FILE="$BUILD_META_DIR/airflow_requirements.sha"
+AIRFLOW_IMAGE="ibkr-airflow:latest"
+AIRFLOW_DOCKERFILE_LABEL_KEY="ibkr.trading-webui.airflow.image"
+AIRFLOW_DOCKERFILE_LABEL_EXPECTED="Dockerfile.airflow"
 
 # Command-line flags
 FORCE_REBUILD=false
@@ -137,6 +142,13 @@ detect_images() {
     return 0  # All images exist
 }
 
+# Check whether the Airflow image matches the project's Dockerfile.airflow build.
+airflow_image_is_current() {
+    local label
+    label=$(docker image inspect "$AIRFLOW_IMAGE" --format '{{ index .Config.Labels "'"$AIRFLOW_DOCKERFILE_LABEL_KEY"'" }}' 2>/dev/null || true)
+    [[ "$label" == "$AIRFLOW_DOCKERFILE_LABEL_EXPECTED" ]]
+}
+
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
     print_error "Docker CLI not found"
@@ -191,7 +203,7 @@ else
         print_status "IBKR_API_BASE_URL detected: ${IBKR_API_BASE_URL}"
     fi
     if [ -z "${IBKR_API_BASE_URL_INTERNAL:-}" ]; then
-        export IBKR_API_BASE_URL_INTERNAL="https://ibkr-gateway:443/v1/api"
+        export IBKR_API_BASE_URL_INTERNAL="https://ibkr-gateway:5055/v1/api"
         print_info "IBKR_API_BASE_URL_INTERNAL not set; defaulting to ${IBKR_API_BASE_URL_INTERNAL}"
     else
         print_status "IBKR_API_BASE_URL_INTERNAL detected: ${IBKR_API_BASE_URL_INTERNAL}"
@@ -326,7 +338,27 @@ if [ -f "$BACKEND_REQUIREMENTS_PATH" ]; then
     fi
 fi
 
+AIRFLOW_REQUIREMENTS_CHANGED=false
+CURRENT_AIRFLOW_REQ_HASH=""
+if [ -f "$AIRFLOW_REQUIREMENTS_PATH" ]; then
+    CURRENT_AIRFLOW_REQ_HASH=$(calc_file_hash "$AIRFLOW_REQUIREMENTS_PATH")
+    if [ -n "$CURRENT_AIRFLOW_REQ_HASH" ]; then
+        if [ -f "$AIRFLOW_REQUIREMENTS_HASH_FILE" ]; then
+            SAVED_AIRFLOW_HASH=$(cat "$AIRFLOW_REQUIREMENTS_HASH_FILE" 2>/dev/null || true)
+        else
+            SAVED_AIRFLOW_HASH=""
+        fi
+        if [ "$CURRENT_AIRFLOW_REQ_HASH" != "$SAVED_AIRFLOW_HASH" ]; then
+            AIRFLOW_REQUIREMENTS_CHANGED=true
+            print_info "Detected Airflow dependency changes; scheduling Airflow image rebuild"
+        fi
+    else
+        print_info "Unable to calculate Airflow requirements hash (sha256sum/shasum missing)"
+    fi
+fi
+
 NEED_BUILD=false
+NEED_AIRFLOW_REBUILD=false
 if ! detect_images; then
     NEED_BUILD=true
     print_info "Docker images not found (first run)"
@@ -334,50 +366,74 @@ elif [ "$FORCE_REBUILD" = true ]; then
     NEED_BUILD=true
     print_info "Force rebuild requested (--rebuild flag)"
 else
-    print_status "Using cached Docker images"
-    print_info "Use --rebuild flag to force rebuild after dependency changes"
+    if [ "$AIRFLOW_REQUIREMENTS_CHANGED" = true ]; then
+        NEED_AIRFLOW_REBUILD=true
+        print_info "Airflow requirements changed; rebuilding Airflow image"
+    elif ! airflow_image_is_current; then
+        NEED_AIRFLOW_REBUILD=true
+        print_info "Detected legacy Airflow image build (missing Dockerfile.airflow label); rebuilding Airflow image to ensure AutoGen dependencies are installed"
+    else
+        print_status "Using cached Docker images"
+        print_info "Use --rebuild flag to force rebuild after dependency changes"
+    fi
 fi
 
-if [ "$NEED_BUILD" = true ]; then
+if [ "$NEED_BUILD" = true ] || [ "$NEED_AIRFLOW_REBUILD" = true ]; then
     echo ""
     print_header "Building Docker Images"
     
     if [ "$FORCE_REBUILD" = true ]; then
         print_info "Building all images with uv (10-100x faster than pip)..."
-    else
+    elif [ "$NEED_BUILD" = true ]; then
         print_info "First-time build with uv (10-100x faster than pip)..."
+    else
+        print_info "Rebuilding Airflow image with uv (10-100x faster than pip)..."
     fi
     print_info "This may take 1-2 minutes (one-time cost)..."
     echo ""
     
     START_BUILD=$(date +%s)
-    
-    # Build backend image directly (avoid Compose's slow build path)
-    print_info "Building backend image (ibkr-backend:latest)..."
-    docker build -f docker/Dockerfile.backend -t ibkr-backend:latest .
-    if [ "$REQUIREMENTS_CHANGED" = true ] && [ -n "$CURRENT_BACKEND_REQ_HASH" ]; then
-        echo "$CURRENT_BACKEND_REQ_HASH" > "$BACKEND_REQUIREMENTS_HASH_FILE"
+
+    if [ "$NEED_BUILD" = true ]; then
+        # Build backend image directly (avoid Compose's slow build path)
+        print_info "Building backend image (ibkr-backend:latest)..."
+        docker build -f docker/Dockerfile.backend -t ibkr-backend:latest .
+        if [ "$REQUIREMENTS_CHANGED" = true ] && [ -n "$CURRENT_BACKEND_REQ_HASH" ]; then
+            echo "$CURRENT_BACKEND_REQ_HASH" > "$BACKEND_REQUIREMENTS_HASH_FILE"
+        fi
+
+        # Copy webapp directory to project root for gateway build (if it doesn't exist)
+        if [ ! -d "webapp" ]; then
+            print_info "Copying webapp directory from reference/ to project root..."
+            cp -r reference/webapp ./webapp
+        fi
+
+        # Build gateway image directly
+        print_info "Building gateway image (ibkr-gateway:latest)..."
+        docker build -f Dockerfile -t ibkr-gateway:latest .
+
+        # Build Airflow image using the project's canonical Dockerfile
+        print_info "Building Airflow image (ibkr-airflow:latest)..."
+        docker build -f Dockerfile.airflow -t ibkr-airflow:latest .
+        print_info "Verifying Kaleido inside ibkr-airflow:latest..."
+        ./scripts/verify_kaleido.sh --image ibkr-airflow:latest
+        if [ -n "$CURRENT_AIRFLOW_REQ_HASH" ]; then
+            echo "$CURRENT_AIRFLOW_REQ_HASH" > "$AIRFLOW_REQUIREMENTS_HASH_FILE"
+        fi
+
+        # Build MLflow image (using reference structure)
+        print_info "Building MLflow image (ibkr-mlflow:latest)..."
+        docker build -f reference/airflow/mlflow/Dockerfile -t ibkr-mlflow:latest reference/airflow/mlflow/
+    else
+        # Rebuild only the Airflow image (common when switching from older reference builds).
+        print_info "Building Airflow image (ibkr-airflow:latest)..."
+        docker build -f Dockerfile.airflow -t ibkr-airflow:latest .
+        print_info "Verifying Kaleido inside ibkr-airflow:latest..."
+        ./scripts/verify_kaleido.sh --image ibkr-airflow:latest
+        if [ -n "$CURRENT_AIRFLOW_REQ_HASH" ]; then
+            echo "$CURRENT_AIRFLOW_REQ_HASH" > "$AIRFLOW_REQUIREMENTS_HASH_FILE"
+        fi
     fi
-    
-    # Copy webapp directory to project root for gateway build (if it doesn't exist)
-    if [ ! -d "webapp" ]; then
-        print_info "Copying webapp directory from reference/ to project root..."
-        cp -r reference/webapp ./webapp
-    fi
-    
-    # Build gateway image directly
-    print_info "Building gateway image (ibkr-gateway:latest)..."
-    docker build -f Dockerfile -t ibkr-gateway:latest .
-    
-    # Build Airflow image (using reference structure)
-    print_info "Building Airflow image (ibkr-airflow:latest)..."
-    docker build -f reference/airflow/airflow/Dockerfile -t ibkr-airflow:latest reference/airflow/airflow/
-    print_info "Verifying Kaleido inside ibkr-airflow:latest..."
-    ./scripts/verify_kaleido.sh --image ibkr-airflow:latest
-    
-    # Build MLflow image (using reference structure)
-    print_info "Building MLflow image (ibkr-mlflow:latest)..."
-    docker build -f reference/airflow/mlflow/Dockerfile -t ibkr-mlflow:latest reference/airflow/mlflow/
     
     END_BUILD=$(date +%s)
     BUILD_TIME=$((END_BUILD - START_BUILD))

@@ -1,5 +1,7 @@
 FROM apache/airflow:2.10.5
 
+LABEL ibkr.trading-webui.airflow.image="Dockerfile.airflow"
+
 USER root
 
 # Create necessary directories with proper permissions
