@@ -7,12 +7,16 @@ conversation trace suitable for MLflow logging.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
+from concurrent.futures import Future
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+import inspect
+import threading
+from typing import Any, Awaitable, Dict, List, Optional, Sequence, Tuple, TypeVar
 
 import pandas as pd
 
@@ -21,6 +25,37 @@ from models.signal import SignalAction, SignalConfidence, TradingSignal
 from utils.config import config
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def _run_awaitable(awaitable: Awaitable[T]) -> T:
+    """Run an awaitable to completion from sync code.
+
+    AutoGen's agentchat APIs are async in newer versions. Airflow PythonOperators are sync, so we
+    bridge by running the coroutine in a fresh event loop. If an event loop is already running in
+    this thread, we execute the awaitable in a dedicated thread instead.
+    """
+
+    async def _runner() -> T:
+        return await awaitable
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_runner())
+
+    future: Future[T] = Future()
+
+    def _thread_target() -> None:
+        try:
+            future.set_result(asyncio.run(_runner()))
+        except BaseException as exc:
+            future.set_exception(exc)
+
+    thread = threading.Thread(target=_thread_target, name="autogen-awaitable-runner", daemon=True)
+    thread.start()
+    return future.result()
 
 
 def _decimal(value: Optional[float]) -> Optional[Decimal]:
@@ -226,6 +261,8 @@ class AutoGenFinAgentOrchestrator:
         )
 
         result = team.run(task=task)
+        if inspect.isawaitable(result):
+            result = _run_awaitable(result)
         conversation = [message.model_dump() for message in result.messages]
 
         decision_text = None

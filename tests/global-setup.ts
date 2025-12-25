@@ -1,4 +1,4 @@
-import { chromium, FullConfig } from '@playwright/test';
+import { FullConfig } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -17,14 +17,21 @@ async function globalSetup(config: FullConfig) {
   // Setup mock data
   await setupMockData();
 
-  // Warm up the application
-  await warmupApplication();
-
   console.log('✅ Global test setup completed');
 }
 
 async function setupTestDatabase() {
   console.log('📊 Setting up test database...');
+
+  const fixturesDir = path.join(__dirname, 'fixtures');
+  if (!fs.existsSync(fixturesDir)) {
+    fs.mkdirSync(fixturesDir, { recursive: true });
+  }
+
+  const testDataPath = path.join(fixturesDir, 'test-data.json');
+  if (fs.existsSync(testDataPath)) {
+    return;
+  }
   
   // Create test database with sample data
   const testData = {
@@ -71,7 +78,7 @@ async function setupTestDatabase() {
 
   // Save test data to file for use in tests
   fs.writeFileSync(
-    path.join(__dirname, 'fixtures', 'test-data.json'),
+    testDataPath,
     JSON.stringify(testData, null, 2)
   );
 }
@@ -94,10 +101,10 @@ async function setupMockData() {
     }
   };
 
-  fs.writeFileSync(
-    path.join(fixturesDir, 'mock-llm-responses.json'),
-    JSON.stringify(mockLLMResponses, null, 2)
-  );
+  const llmResponsePath = path.join(fixturesDir, 'mock-llm-responses.json');
+  if (!fs.existsSync(llmResponsePath)) {
+    fs.writeFileSync(llmResponsePath, JSON.stringify(mockLLMResponses, null, 2));
+  }
 
   // Mock market data
   const mockMarketData = {
@@ -121,28 +128,9 @@ async function setupMockData() {
     }
   };
 
-  fs.writeFileSync(
-    path.join(fixturesDir, 'mock-market-data.json'),
-    JSON.stringify(mockMarketData, null, 2)
-  );
-}
-
-async function warmupApplication() {
-  console.log('🔥 Warming up application...');
-  
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-  
-  try {
-    // Make a request to the health endpoint to ensure the app is running
-    await page.goto(process.env.BASE_URL || 'http://localhost:8000');
-    await page.waitForLoadState('networkidle');
-    console.log('✅ Application is responsive');
-  } catch (error) {
-    console.error('❌ Failed to warm up application:', error);
-    throw error;
-  } finally {
-    await browser.close();
+  const marketDataPath = path.join(fixturesDir, 'mock-market-data.json');
+  if (!fs.existsSync(marketDataPath)) {
+    fs.writeFileSync(marketDataPath, JSON.stringify(mockMarketData, null, 2));
   }
 }
 

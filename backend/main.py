@@ -1,4 +1,5 @@
 """Main FastAPI application."""
+import asyncio
 import logging
 import os
 
@@ -25,10 +26,12 @@ from backend.api import (
     workflow_symbols,
     workflows,
 )
+from backend.config.settings import settings
 from backend.app.routes import airflow_proxy, mlflow_proxy
 from backend.core.database import engine, get_db
 from backend.models import Base
 from backend.models.workflow_symbol import ensure_workflow_symbol_schema
+from backend.services.ibkr_service import IBKRService
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -79,6 +82,57 @@ app.include_router(mlflow_proxy.router, prefix="/api/mlflow", tags=["mlflow"])
 
 # WebSocket functionality removed (was used for workflow log streaming)
 
+async def _attempt_ibkr_auto_login() -> None:
+    """Background auto-login to Client Portal Gateway (optional, env-driven)."""
+    try:
+        if not settings.IBKR_AUTO_LOGIN:
+            return
+
+        username = (settings.IBKR_USERNAME or settings.IBKR_USER or "").strip()
+        password = settings.IBKR_PASSWORD.get_secret_value() if settings.IBKR_PASSWORD else ""
+        missing = []
+        if not username:
+            missing.append("IBKR_USERNAME")
+        if not password:
+            missing.append("IBKR_PASSWORD")
+        if missing:
+            logger.warning("IBKR_AUTO_LOGIN=true but %s not set; skipping auto-login", ", ".join(missing))
+            return
+
+        ibkr = IBKRService()
+
+        # Wait for gateway to come online (compose starts backend before gateway is healthy).
+        max_attempts = 30
+        for attempt in range(1, max_attempts + 1):
+            status = await ibkr.check_gateway_connection()
+            if status.get("server_online"):
+                if status.get("authenticated"):
+                    logger.info("IBKR Gateway already authenticated; skipping auto-login")
+                    return
+                break
+            await asyncio.sleep(min(5, attempt))
+        else:
+            logger.warning("IBKR Gateway did not become reachable; skipping auto-login")
+            return
+
+        trading_mode = (settings.IBKR_TRADING_MODE or "paper").lower()
+        if trading_mode not in {"paper", "live"}:
+            logger.warning("Invalid IBKR_TRADING_MODE=%r; defaulting to 'paper'", settings.IBKR_TRADING_MODE)
+            trading_mode = "paper"
+
+        result = await ibkr.automated_login(
+            username=username,
+            password=password,
+            trading_mode=trading_mode,
+        )
+
+        if result.get("success"):
+            logger.info("IBKR auto-login: %s", result.get("message", "started"))
+        else:
+            logger.warning("IBKR auto-login failed: %s", result.get("message", "unknown error"))
+    except Exception:
+        logger.exception("IBKR auto-login task crashed")
+
 
 @app.on_event("startup")
 async def startup():
@@ -110,6 +164,9 @@ async def startup():
         except Exception as schema_err:
             logger.warning("Failed to ensure workflow_symbols schema: %s", schema_err)
     
+    # Optional: auto-login to Client Portal Gateway using env credentials.
+    asyncio.create_task(_attempt_ibkr_auto_login())
+
     logger.info("Application started successfully")
 
 

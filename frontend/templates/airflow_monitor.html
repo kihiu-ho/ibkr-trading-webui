@@ -239,7 +239,7 @@
                         </div>
                         <div class="p-4">
                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                <template x-for="task in selectedRunTasks" :key="task.task_id">
+                                <template x-for="(task, index) in selectedRunTasks" :key="task.task_id">
                                     <div class="relative">
                                         <div class="p-4 border border-gray-200 rounded-lg transition-all hover:shadow-md"
                                             :class="{
@@ -288,7 +288,7 @@
                                         </div>
                                         <!-- Connection line (simplified) -->
                                         <div class="absolute -right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-0.5 bg-gray-300"
-                                            x-show="$index < selectedRunTasks.length - 1"></div>
+                                            x-show="index < selectedRunTasks.length - 1"></div>
                                     </div>
                                 </template>
                             </div>
@@ -463,19 +463,15 @@
                     </div>
                 </div>
 
-                <!-- Related Artifacts & MLflow -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <!-- MLflow Integration -->
-                    <div class="bg-white border border-gray-200 rounded-lg p-6">
+                <!-- Outputs -->
+                <div class="grid gap-6" :class="mlflowRuns.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'">
+                    <!-- MLflow (only when available) -->
+                    <div x-show="mlflowRuns.length > 0" x-cloak class="bg-white border border-gray-200 rounded-lg p-6">
                         <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                             <i class="fa fa-flask mr-2 text-pink-500"></i>
-                            MLflow Runs
+                            MLflow
                         </h4>
-                        <div x-show="mlflowRuns.length === 0" class="text-center py-8 text-gray-500">
-                            <i class="fa fa-flask text-4xl text-gray-300 mb-2"></i>
-                            <p>No MLflow runs found for this workflow</p>
-                        </div>
-                        <div class="space-y-3" x-show="mlflowRuns.length > 0">
+                        <div class="space-y-3">
                             <template x-for="run in mlflowRuns" :key="run.run_id">
                                 <div class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
                                     <div class="flex justify-between items-start">
@@ -499,25 +495,30 @@
                     <!-- Artifacts -->
                     <div class="bg-white border border-gray-200 rounded-lg p-6">
                         <div class="flex justify-between items-center mb-4">
-                            <h4 class="text-lg font-semibold text-gray-900 flex items-center">
-                                <i class="fa fa-box mr-2 text-purple-500"></i>
-                                Generated Artifacts
-                            </h4>
+                            <div class="flex items-center gap-3">
+                                <h4 class="text-lg font-semibold text-gray-900 flex items-center">
+                                    <i class="fa fa-box mr-2 text-purple-500"></i>
+                                    Artifacts
+                                </h4>
+                                <span
+                                    class="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-700"
+                                    x-text="runArtifacts.length"></span>
+                            </div>
                             <button @click="loadArtifactsForRun(selectedRun.dag_run_id)"
-                                class="text-sm text-blue-600 hover:text-blue-800">
-                                <i class="fa fa-refresh mr-1"></i>Refresh
+                                class="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                :disabled="loadingArtifacts">
+                                <i class="fa fa-refresh mr-1" :class="{ 'fa-spin': loadingArtifacts }"></i>
+                                <span x-text="loadingArtifacts ? 'Refreshing…' : 'Refresh'"></span>
                             </button>
                         </div>
-                        <div x-show="runArtifacts.length === 0" class="text-center py-8 text-gray-500">
-                            <i class="fa fa-box text-4xl text-gray-300 mb-2"></i>
-                            <p>No artifacts generated for this run</p>
-                            <p class="text-xs text-gray-400 mt-1">Artifacts are created as tasks complete</p>
+                        <div x-show="runArtifacts.length === 0 && !loadingArtifacts" class="text-sm text-gray-500">
+                            <span x-text="isActiveRun(selectedRun?.state) ? 'No artifacts yet.' : 'No artifacts.'"></span>
                         </div>
-                        <div x-show="loadingArtifacts" class="text-center py-8">
+                        <div x-show="loadingArtifacts && runArtifacts.length === 0" class="text-center py-8">
                             <i class="fa fa-spinner fa-spin text-2xl text-gray-400"></i>
                             <p class="text-sm text-gray-500 mt-2">Loading artifacts...</p>
                         </div>
-                        <div class="space-y-4" x-show="runArtifacts.length > 0 && !loadingArtifacts">
+                        <div class="space-y-4" x-show="runArtifacts.length > 0">
                             <!-- Artifact Summary -->
                             <div class="bg-gray-50 rounded-lg p-3 mb-4">
                                 <div class="flex flex-wrap gap-4 text-sm">
@@ -775,6 +776,10 @@
                 mlflowRuns: [],
                 runArtifacts: [],
                 loadingArtifacts: false,
+                runDetailsPollIntervalId: null,
+                runDetailsPollInFlight: false,
+                runDetailsPollDagId: null,
+                runDetailsPollRunId: null,
 
                 async init() {
                     await this.checkHealth();
@@ -801,6 +806,13 @@
 
                     // Auto-refresh every 30 seconds
                     setInterval(() => this.refreshData(), 30000);
+
+                    // Stop any per-run polling when the modal closes
+                    this.$watch('showModal', (value) => {
+                        if (!value) {
+                            this.stopRunDetailsPolling();
+                        }
+                    });
                 },
 
                 async checkHealth() {
@@ -877,6 +889,24 @@
                     }
                     const stoppableStates = ['running', 'queued', 'scheduled', 'up_for_retry', 'up_for_reschedule'];
                     return stoppableStates.includes(run.state.toLowerCase());
+                },
+
+                isActiveRun(state) {
+                    const normalized = (state || '').toLowerCase();
+                    return ['running', 'queued', 'scheduled', 'up_for_retry', 'up_for_reschedule'].includes(normalized);
+                },
+
+                updateTaskStatsFromTasks(tasks) {
+                    const stats = { success: 0, running: 0, failed: 0, queued: 0 };
+                    (tasks || []).forEach((task) => {
+                        switch (task.state) {
+                            case 'success': stats.success++; break;
+                            case 'running': stats.running++; break;
+                            case 'failed': stats.failed++; break;
+                            case 'queued': stats.queued++; break;
+                        }
+                    });
+                    this.taskStats = stats;
                 },
 
                 openFailModal(run) {
@@ -1106,62 +1136,128 @@
                     }
                 },
 
+                stopRunDetailsPolling() {
+                    if (this.runDetailsPollIntervalId) {
+                        clearInterval(this.runDetailsPollIntervalId);
+                        this.runDetailsPollIntervalId = null;
+                    }
+                    this.runDetailsPollDagId = null;
+                    this.runDetailsPollRunId = null;
+                    this.runDetailsPollInFlight = false;
+                },
+
+                startRunDetailsPolling(dagId, runId) {
+                    this.stopRunDetailsPolling();
+                    this.runDetailsPollDagId = dagId;
+                    this.runDetailsPollRunId = runId;
+
+                    const poll = async () => {
+                        if (!this.showModal) {
+                            this.stopRunDetailsPolling();
+                            return;
+                        }
+                        if (!this.selectedRun || this.selectedRun.dag_run_id !== runId) {
+                            return;
+                        }
+                        if (this.runDetailsPollInFlight) {
+                            return;
+                        }
+
+                        this.runDetailsPollInFlight = true;
+                        try {
+                            const shouldRefreshArtifacts = this.isActiveRun(this.selectedRun?.state);
+                            await this.refreshRunDetails(dagId, runId, {
+                                includeArtifacts: shouldRefreshArtifacts,
+                                silentArtifacts: true
+                            });
+                        } finally {
+                            this.runDetailsPollInFlight = false;
+                        }
+
+                        if (!this.showModal || !this.selectedRun || this.selectedRun.dag_run_id !== runId) {
+                            this.stopRunDetailsPolling();
+                            return;
+                        }
+                        if (!this.isActiveRun(this.selectedRun?.state)) {
+                            this.stopRunDetailsPolling();
+                        }
+                    };
+
+                    poll();
+                    this.runDetailsPollIntervalId = setInterval(poll, 5000);
+                },
+
+                async refreshRunDetails(dagId, runId, { includeArtifacts = false, silentArtifacts = false } = {}) {
+                    const dagIdEncoded = encodeURIComponent(dagId);
+                    const runIdEncoded = encodeURIComponent(runId);
+
+                    try {
+                        const [runResponse, tasksResponse] = await Promise.all([
+                            fetch(`/api/airflow/dags/${dagIdEncoded}/dagRuns/${runIdEncoded}`),
+                            fetch(`/api/airflow/dags/${dagIdEncoded}/dagRuns/${runIdEncoded}/taskInstances`)
+                        ]);
+
+                        if (runResponse.ok) {
+                            const runData = await runResponse.json();
+                            if (runData && runData.dag_run_id) {
+                                this.selectedRun = { ...this.selectedRun, ...runData };
+                                this.recentRuns = this.recentRuns.map(r => {
+                                    if (r.dag_run_id === runId) {
+                                        return { ...r, ...runData };
+                                    }
+                                    return r;
+                                });
+                            }
+                        } else {
+                            // Keep selectedRun synced with the table data as a best-effort fallback
+                            this.syncSelectedRun();
+                        }
+
+                        if (tasksResponse.ok) {
+                            const tasksData = await tasksResponse.json();
+                            this.selectedRunTasks = tasksData.task_instances || [];
+                            this.updateTaskStatsFromTasks(this.selectedRunTasks);
+                        } else {
+                            console.warn('Failed to load task instances:', tasksResponse.status);
+                        }
+
+                        if (includeArtifacts) {
+                            await this.loadArtifactsForRun(runId, { silent: silentArtifacts });
+                        }
+                    } catch (error) {
+                        console.error('Failed to refresh run details:', error);
+                    }
+                },
+
                 async viewRunDetails(dagId, runId) {
                     try {
-                        // Load task instances
-                        const response = await fetch(`/api/airflow/dags/${dagId}/dagRuns/${runId}/taskInstances`);
-                        const data = await response.json();
+                        this.stopRunDetailsPolling();
                         this.selectedRun = this.recentRuns.find(r => r.dag_run_id === runId) || this.selectedRun;
                         if (!this.selectedRun) {
                             this.selectedRun = { dag_id: dagId, dag_run_id: runId, state: 'unknown' };
                         }
-                        this.selectedRunTasks = data.task_instances || [];
-
-                        // Calculate task statistics
-                        this.taskStats = { success: 0, running: 0, failed: 0, queued: 0 };
-                        this.selectedRunTasks.forEach(task => {
-                            switch (task.state) {
-                                case 'success': this.taskStats.success++; break;
-                                case 'running': this.taskStats.running++; break;
-                                case 'failed': this.taskStats.failed++; break;
-                                case 'queued': this.taskStats.queued++; break;
-                            }
-                        });
+                        this.selectedRunTasks = [];
+                        this.updateTaskStatsFromTasks(this.selectedRunTasks);
+                        this.runArtifacts = [];
 
                         // Load related MLflow runs (mock for now - in real implementation, this would query MLflow API)
                         this.mlflowRuns = [];
                         // TODO: Implement MLflow run lookup based on DAG run ID
 
-                        // Load related artifacts by execution_id (which is the DAG run's execution date)
-                        await this.loadArtifactsForRun(runId);
-
-                        // Set up polling for artifacts if run is still running
-                        if (this.selectedRun && this.selectedRun.state === 'running') {
-                            const pollInterval = setInterval(async () => {
-                                if (this.selectedRun && this.selectedRun.state === 'running') {
-                                    await this.loadArtifactsForRun(runId);
-                                } else {
-                                    clearInterval(pollInterval);
-                                }
-                            }, 5000); // Poll every 5 seconds
-
-                            // Clear interval when modal is closed
-                            this.$watch('showModal', (value) => {
-                                if (!value) {
-                                    clearInterval(pollInterval);
-                                }
-                            });
-                        }
+                        await this.refreshRunDetails(dagId, runId, { includeArtifacts: true, silentArtifacts: false });
 
                         this.showModal = true;
+                        this.startRunDetailsPolling(dagId, runId);
                     } catch (error) {
                         console.error('Failed to load run details:', error);
                         alert('Failed to load run details');
                     }
                 },
 
-                async loadArtifactsForRun(runId) {
-                    this.loadingArtifacts = true;
+                async loadArtifactsForRun(runId, { silent = false } = {}) {
+                    if (!silent) {
+                        this.loadingArtifacts = true;
+                    }
                     try {
                         // Try to get execution_id from the selected run
                         let executionId = null;
@@ -1185,7 +1281,6 @@
                         if (!response.ok) {
                             console.error('Failed to fetch artifacts:', response.status);
                             this.runArtifacts = [];
-                            this.loadingArtifacts = false;
                             return;
                         }
 
@@ -1216,7 +1311,9 @@
                         console.error('Error loading artifacts for run:', error);
                         this.runArtifacts = [];
                     } finally {
-                        this.loadingArtifacts = false;
+                        if (!silent) {
+                            this.loadingArtifacts = false;
+                        }
                     }
                 },
 

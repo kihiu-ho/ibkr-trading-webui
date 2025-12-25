@@ -210,6 +210,24 @@ async def dag_runs(dag_id: str, request: Request):
         logger.error(f"Failed to handle DAG runs for {dag_id}: {e}", exc_info=True)
         return JSONResponse(content={'error': str(e)}, status_code=500)
 
+@router.get('/dags/{dag_id}/dagRuns/{dag_run_id}')
+async def get_dag_run(dag_id: str, dag_run_id: str):
+    """Fetch a specific DAG run."""
+    from urllib.parse import quote
+
+    try:
+        session = get_airflow_session()
+        encoded_dag_run_id = quote(dag_run_id, safe="")
+        url = f"{AIRFLOW_API_URL}/dags/{dag_id}/dagRuns/{encoded_dag_run_id}"
+        response = session.get(url)
+        return _build_airflow_response(
+            response,
+            context=f"GET /dags/{dag_id}/dagRuns/{dag_run_id}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to get DAG run {dag_id}/{dag_run_id}: {e}", exc_info=True)
+        return JSONResponse(content={'error': str(e)}, status_code=500)
+
 
 @router.post('/dags/{dag_id}/dagRuns/{dag_run_id}/fail')
 async def fail_dag_run(dag_id: str, dag_run_id: str, request: Request):

@@ -11,7 +11,7 @@
     </div>
 
     <!-- Connection Status Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6" data-testid="connection-card">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Connection Status</h2>
             <button 
@@ -24,7 +24,7 @@
 
         <div class="space-y-4">
             <!-- Server Status -->
-            <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded">
+            <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded" data-testid="gateway-status">
                 <span class="text-gray-700 dark:text-gray-300">Gateway Server</span>
                 <span class="flex items-center">
                     <span 
@@ -36,7 +36,7 @@
             </div>
 
             <!-- Authentication Status -->
-            <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded">
+            <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded" data-testid="connection-status">
                 <span class="text-gray-700 dark:text-gray-300">Authentication</span>
                 <span class="flex items-center">
                     <span 
@@ -67,19 +67,31 @@
             </div>
 
             <!-- Gateway URL -->
-            <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded">
+            <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded space-y-1">
                 <div class="text-sm text-gray-700 dark:text-gray-300">
                     <strong>Gateway URL:</strong> <span x-text="status.gateway_url || 'Not configured'"></span>
+                </div>
+                <div class="text-sm text-gray-700 dark:text-gray-300" data-testid="trading-mode">
+                    <strong>Trading Mode:</strong>
+                    <span class="uppercase" x-text="status.trading_mode || tradingModeLabel"></span>
+                </div>
+                <div class="text-sm text-gray-700 dark:text-gray-300" data-testid="status-message" x-show="status.message">
+                    <strong>Status:</strong> <span x-text="status.message"></span>
                 </div>
             </div>
 
             <!-- Error Message -->
-            <div x-show="status.server_error || status.error" class="p-4 bg-red-50 dark:bg-red-900 rounded border border-red-200 dark:border-red-700">
+            <div x-show="status.server_error || status.error || error" data-testid="auth-error" class="p-4 bg-red-50 dark:bg-red-900 rounded border border-red-200 dark:border-red-700">
                 <div class="flex items-start">
                     <i class="fa fa-exclamation-triangle text-red-600 dark:text-red-400 mt-0.5 mr-2"></i>
-                    <div class="text-sm text-red-800 dark:text-red-300">
-                        <strong>Error:</strong>
-                        <span x-text="status.server_error || status.error"></span>
+                    <div class="text-sm text-red-800 dark:text-red-300 space-y-1">
+                        <div>
+                            <strong>Error:</strong>
+                            <span x-text="status.server_error || status.error || error"></span>
+                        </div>
+                        <template x-if="!status.server_online">
+                            <div class="text-xs">Is the IBKR Gateway container running on port 5055?</div>
+                        </template>
                     </div>
                 </div>
             </div>
@@ -95,6 +107,7 @@
                 @click="login()"
                 :disabled="loggingIn || status.authenticated"
                 class="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid="manual-login-button"
             >
                 <i class="fa fa-sign-in-alt mr-2"></i>
                 <span x-text="loggingIn ? 'Connecting...' : (status.authenticated ? 'Already Connected' : 'Connect to Gateway')"></span>
@@ -104,11 +117,37 @@
                 @click="logout()"
                 :disabled="!status.authenticated"
                 class="w-full px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid="logout-button"
             >
                 <i class="fa fa-sign-out-alt mr-2"></i>
                 Disconnect
             </button>
         </div>
+    </div>
+
+    <!-- Automated Login (server-side credentials) -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Automated Login</h2>
+
+        <p class="text-gray-600 dark:text-gray-400 mb-4">
+            Uses server-side credentials from <code class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">IBKR_USERNAME</code>
+            and <code class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">IBKR_PASSWORD</code> (configured in your Docker environment).
+        </p>
+
+        <button
+            @click="autoLoginFromEnv()"
+            :disabled="autoLoggingIn || status.authenticated"
+            class="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="auto-login-button"
+        >
+            <i class="fa fa-bolt mr-2"></i>
+            <span x-text="autoLoggingIn ? 'Starting login...' : (status.authenticated ? 'Already Connected' : 'Auto Login (Server Env)')"></span>
+        </button>
+
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-3">
+            <i class="fa fa-info-circle mr-1"></i>
+            If two-factor authentication is enabled, approve the request in your IBKR mobile app.
+        </p>
     </div>
 
     <!-- Gateway Direct Login -->
@@ -184,11 +223,16 @@ document.addEventListener('alpine:init', () => {
             account_id: null,
             accounts: [],
             server_online: false,
-            gateway_url: null
+            gateway_url: null,
+            message: '',
+            trading_mode: null,
         },
         selectedAccount: null,
         checking: false,
         loggingIn: false,
+        autoLoggingIn: false,
+        error: null,
+        tradingModeLabel: 'PAPER',
 
         async init() {
             await this.checkStatus();
@@ -198,16 +242,22 @@ document.addEventListener('alpine:init', () => {
 
         async checkStatus() {
             this.checking = true;
+            this.error = null;
             try {
                 const response = await fetch('/api/ibkr/auth/status');
                 if (response.ok) {
                     this.status = await response.json();
+                    this.status.trading_mode = (this.status.trading_mode || this.tradingModeLabel).toUpperCase();
                     if (this.status.accounts && this.status.accounts.length > 0) {
                         this.selectedAccount = this.status.account_id || this.status.accounts[0];
+                    }
+                    if (this.status.error) {
+                        this.error = this.status.error;
                     }
                 }
             } catch (error) {
                 console.error('Failed to check status:', error);
+                this.error = error.message;
             } finally {
                 this.checking = false;
             }
@@ -260,6 +310,38 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        async autoLoginFromEnv() {
+            if (this.autoLoggingIn) return;
+
+            this.autoLoggingIn = true;
+            this.error = null;
+            try {
+                const response = await fetch('/api/ibkr/auth/auto-login/env', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    this.status.message = result.message || 'Login initiated. Please check IBKR mobile app for 2FA if required.';
+                    this.status.trading_mode = (result.trading_mode || this.tradingModeLabel).toUpperCase();
+                    await this.checkStatus();
+
+                } else {
+                    const error = await response.json();
+                    this.error = error.detail || 'Auto-login failed';
+                    this.status.message = this.error;
+                }
+            } catch (error) {
+                console.error('Auto-login error:', error);
+                this.error = error.message;
+                this.status.message = this.error;
+            } finally {
+                this.autoLoggingIn = false;
+            }
+        },
+
         async saveAccountSelection() {
             // Save selected account to backend
             console.log('Selected account:', this.selectedAccount);
@@ -269,4 +351,3 @@ document.addEventListener('alpine:init', () => {
 });
 </script>
 {% endblock %}
-

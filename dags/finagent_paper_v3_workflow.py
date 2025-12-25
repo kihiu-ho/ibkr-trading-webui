@@ -47,6 +47,11 @@ SYMBOL = config.stock_symbols[0] if config.stock_symbols else "TSLA"
 IBKR_HOST = os.getenv("FINAGENT_IBKR_HOST", "gateway")
 IBKR_PORT = int(os.getenv("FINAGENT_IBKR_PORT", "4002"))
 
+# Workflow schedule configuration
+# Default: every 10 minutes ('*/10 * * * *').
+# Override by setting WORKFLOW_SCHEDULE (cron or preset like '@hourly').
+WORKFLOW_SCHEDULE = os.getenv("WORKFLOW_SCHEDULE") or "*/10 * * * *"
+
 
 def _prepare_finagent_v3_inputs(**context):
     """Fetch IBKR market data + NewsAPI market intelligence and cache in XCom."""
@@ -248,15 +253,16 @@ _dag_kwargs = dict(
     default_args=DEFAULT_ARGS,
     start_date=datetime(2024, 1, 1),
     catchup=False,
+    is_paused_upon_creation=False,
     max_active_runs=1,
-    tags=["finagent", "paper-v3", "newsapi", "mlflow"],
+    tags=["finagent", "paper-v3", "newsapi", "mlflow", "automated"],
 )
 
 # Airflow 3: uses `schedule`; Airflow 2: still supports `schedule_interval`.
 try:
-    dag = DAG(**_dag_kwargs, schedule=None)
+    dag = DAG(**_dag_kwargs, schedule=WORKFLOW_SCHEDULE)
 except TypeError:  # pragma: no cover
-    dag = DAG(**_dag_kwargs, schedule_interval=None)
+    dag = DAG(**_dag_kwargs, schedule_interval=WORKFLOW_SCHEDULE)
 
 with dag:
     prepare_task = PythonOperator(task_id="prepare_finagent_v3_inputs", python_callable=_prepare_finagent_v3_inputs)

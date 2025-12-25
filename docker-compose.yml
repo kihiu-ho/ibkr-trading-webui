@@ -262,7 +262,15 @@ services:
         - ibkr-backend:latest
     image: ibkr-backend:latest
     container_name: ibkr-backend
-    environment: *common-env
+    environment:
+      <<: *common-env
+      # Optional: allow backend to auto-login to Client Portal Gateway (do not commit real creds)
+      IBKR_USERNAME: "${IBKR_USERNAME:-}"
+      # Back-compat: some setups used IBKR_USER instead of IBKR_USERNAME
+      IBKR_USER: "${IBKR_USER:-}"
+      IBKR_PASSWORD: "${IBKR_PASSWORD:-}"
+      IBKR_TRADING_MODE: "${IBKR_TRADING_MODE:-paper}"
+      IBKR_AUTO_LOGIN: "${IBKR_AUTO_LOGIN:-false}"
     ports:
       - "8000:8000"
     volumes:

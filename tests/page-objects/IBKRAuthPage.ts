@@ -8,7 +8,11 @@ export class IBKRAuthPage extends BasePage {
 
   // Page elements
   get connectButton() {
-    return this.page.locator('button[\\@click="login()"]');
+    return this.page.getByTestId('manual-login-button');
+  }
+
+  get autoLoginButton() {
+    return this.page.getByTestId('auto-login-button');
   }
 
   get disconnectButton() {
@@ -39,14 +43,31 @@ export class IBKRAuthPage extends BasePage {
     return this.page.locator('text=Authentication');
   }
 
+  get statusMessage() {
+    return this.page.getByTestId('status-message');
+  }
+
   // Methods
+  async login(username?: string, password?: string, paperTrading?: boolean) {
+    // UI uses server-side env credentials; click auto-login and wait.
+    await this.autoLoginFromEnv();
+    await this.waitForConnection();
+  }
+
+  async autoLoginFromEnv() {
+    await this.autoLoginButton.click();
+  }
+
   async connectToGateway() {
     try {
       // Check if connect button is available and visible
       const connectButtonVisible = await this.connectButton.isVisible({ timeout: 5000 }).catch(() => false);
+      const connectButtonEnabled = connectButtonVisible
+        ? await this.connectButton.isEnabled({ timeout: 1000 }).catch(() => false)
+        : false;
 
-      if (connectButtonVisible) {
-        await this.connectButton.click();
+      if (connectButtonVisible && connectButtonEnabled) {
+        await this.connectButton.click({ timeout: 5000 });
         console.log('✅ Connect button clicked');
 
         // Wait for connection attempt to complete
@@ -75,6 +96,8 @@ export class IBKRAuthPage extends BasePage {
           }
         }
 
+      } else if (connectButtonVisible) {
+        console.log('⚠️ Connect button is visible but disabled; skipping click');
       } else {
         console.log('⚠️ Connect button not found or not visible');
       }
@@ -124,22 +147,28 @@ export class IBKRAuthPage extends BasePage {
     expect(status.serverOnline || status.authenticated).toBeTruthy();
   }
 
-  async assertAuthenticationFailure() {
+  async assertAuthenticationFailure(expectedText?: string) {
     const status = await this.checkConnectionStatus();
     expect(status.serverOnline && status.authenticated).toBeFalsy();
+    if (expectedText) {
+      await expect(this.errorMessage).toContainText(expectedText);
+    }
   }
 
   async performFullLogin() {
     await this.goto();
-    await this.refreshStatus();
 
-    // Try to connect to gateway
-    await this.connectToGateway();
-
-    // Check if connection was successful
-    await this.refreshStatus();
+    const canClickAutoLogin = await this.autoLoginButton.isEnabled().catch(() => false);
+    if (canClickAutoLogin) {
+      await this.autoLoginFromEnv();
+    }
+    await this.waitForConnection();
 
     // Save authentication state (even if not fully authenticated)
     await this.page.context().storageState({ path: 'test-results/auth.json' });
+  }
+
+  async waitForConnection() {
+    await expect(this.connectionStatus).toContainText('Connected');
   }
 }

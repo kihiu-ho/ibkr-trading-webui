@@ -4,6 +4,10 @@ import * as dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
+const chromiumExecutable = process.env.CHROMIUM_EXECUTABLE;
+const isCI = /^(1|true)$/i.test(process.env.CI ?? '');
+const skipAuth = /^(1|true)$/i.test(process.env.SKIP_AUTH ?? '');
+
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
@@ -12,17 +16,17 @@ export default defineConfig({
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
-  forbidOnly: !!process.env.CI,
+  forbidOnly: isCI,
   /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
+  retries: isCI ? 2 : 0,
   /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  workers: isCI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
     ['html', { outputFolder: 'playwright-report' }],
     ['json', { outputFile: 'test-results/results.json' }],
     ['junit', { outputFile: 'test-results/junit.xml' }],
-    process.env.CI ? ['github'] : ['list']
+    isCI ? ['github'] : ['list']
   ],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
@@ -41,6 +45,10 @@ export default defineConfig({
     /* Global timeout for all tests */
     actionTimeout: 30000,
     navigationTimeout: 30000,
+    launchOptions: {
+      executablePath: chromiumExecutable,
+      args: ['--no-sandbox', '--disable-crash-reporter', '--noerrdialogs'],
+    },
   },
 
   /* Configure projects for major browsers */
@@ -54,9 +62,9 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         // Use prepared auth state (optional for workflow testing)
-        storageState: process.env.SKIP_AUTH ? undefined : 'test-results/auth.json',
+        storageState: skipAuth ? undefined : 'test-results/auth.json',
       },
-      dependencies: process.env.SKIP_AUTH ? [] : ['setup'],
+      dependencies: skipAuth ? [] : ['setup'],
     },
     {
       name: 'firefox',
@@ -94,10 +102,10 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
-  webServer: process.env.CI ? undefined : {
+  webServer: isCI ? undefined : {
     command: 'cd .. && python -m uvicorn backend.main:app --host 0.0.0.0 --port 8001',
     url: 'http://localhost:8001',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !isCI,
     timeout: 120 * 1000,
   },
 

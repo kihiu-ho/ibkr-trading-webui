@@ -5,8 +5,7 @@ from backend.config.settings import settings
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 import logging
 import asyncio
-from urllib.parse import urlencode
-import json
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +23,18 @@ class IBKRService:
     
     def __init__(self):
         self.base_url = settings.IBKR_API_BASE_URL
+        self.gateway_origin = self._derive_gateway_origin(self.base_url)
         self.account_id = settings.IBKR_ACCOUNT_ID
+        self.ssl_verify = settings.IBKR_SSL_VERIFY
         self.timeout = 30.0
+
+    @staticmethod
+    def _derive_gateway_origin(base_url: str) -> str:
+        """Derive the scheme+host(+port) origin from an IBKR API base URL."""
+        parsed = urlparse(base_url)
+        if not parsed.scheme or not parsed.netloc:
+            raise ValueError(f"Invalid IBKR_API_BASE_URL: {base_url}")
+        return f"{parsed.scheme}://{parsed.netloc}"
     
     @retry(
         stop=stop_after_attempt(3),
@@ -36,7 +45,7 @@ class IBKRService:
         """Make HTTP request to IBKR API with retry logic."""
         url = f"{self.base_url}{endpoint}"
         
-        async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, verify=self.ssl_verify) as client:
             try:
                 response = await client.request(method, url, **kwargs)
                 response.raise_for_status()
@@ -237,26 +246,25 @@ class IBKRService:
         return snapshot.get(str(conid), {})
 
     async def automated_login(self, username: str, password: str, trading_mode: str = "paper") -> Dict[str, Any]:
-        """
-        Perform automated login to IBKR Gateway.
+        """Perform automated login to IBKR Gateway with server credentials.
 
-        Args:
-            username: IBKR username
-            password: IBKR password
-            trading_mode: "paper" or "live" trading mode
-
-        Returns:
-            Login result dictionary
+        Returns a structured status payload so the UI and tests can surface
+        gateway reachability, authentication state, and 2FA requirements
+        without leaking credentials.
         """
         try:
             # First, check if we need to logout any existing session
             await self._logout_existing_session()
 
             # Navigate to the login endpoint
-            login_url = "https://localhost:5055/sso/Login?forwardTo=22&RL=1&ip2loc=US"
+            login_url = f"{self.gateway_origin}/sso/Login?forwardTo=22&RL=1&ip2loc=US"
 
-            async with httpx.AsyncClient(timeout=60.0, verify=False, follow_redirects=True) as client:
-                # Get the login page to extract any required tokens/cookies
+            async with httpx.AsyncClient(
+                timeout=60.0,
+                verify=self.ssl_verify,
+                follow_redirects=True,
+            ) as client:
+                # Get the login page to establish session cookies
                 login_page = await client.get(login_url)
 
                 if login_page.status_code != 200:
@@ -279,47 +287,82 @@ class IBKRService:
                     }
                 )
 
-                # Check if login was successful
+                # Allow a brief window for authentication to propagate
                 if login_response.status_code in [200, 302]:
-                    # Wait for authentication to propagate
                     await asyncio.sleep(3)
-
-                    # Verify authentication status
-                    auth_status = await self.check_auth_status()
-
-                    if auth_status.get('authenticated', False):
-                        logger.info("Automated login successful")
-                        return {
-                            "success": True,
-                            "message": "Login successful",
-                            "authenticated": True,
-                            "trading_mode": trading_mode
-                        }
-                    else:
-                        # May need 2FA - check for pending authentication
-                        return {
-                            "success": True,
-                            "message": "Login initiated. Please complete 2FA on your IBKR mobile app.",
-                            "authenticated": False,
-                            "requires_2fa": True,
-                            "trading_mode": trading_mode
-                        }
                 else:
                     raise Exception(f"Login failed with status: {login_response.status_code}")
 
+            # Verify gateway/auth status after attempting login
+            connection_status = await self.check_gateway_connection()
+            authenticated = connection_status.get('authenticated', False)
+            server_online = connection_status.get('server_online', False)
+            connected = connection_status.get('connected', False)
+            message = connection_status.get('message', '') or connection_status.get('error', '')
+
+            if authenticated:
+                logger.info("Automated login successful")
+                return {
+                    "success": True,
+                    "message": message or "Login successful",
+                    "authenticated": True,
+                    "connected": connected,
+                    "server_online": server_online,
+                    "trading_mode": trading_mode,
+                }
+
+            # If gateway is reachable but not authenticated, likely requires 2FA
+            if server_online:
+                if not message or "authentication required" in message.lower():
+                    message = "Login initiated. If two-factor authentication is enabled, approve the request in your IBKR mobile app."
+                return {
+                    "success": True,
+                    "message": message or "Login initiated. Please complete 2FA on your IBKR mobile app.",
+                    "authenticated": False,
+                    "requires_2fa": True,
+                    "connected": connected,
+                    "server_online": server_online,
+                    "trading_mode": trading_mode,
+                }
+
+            # Gateway not reachable or other error
+            return {
+                "success": False,
+                "message": message or "Gateway unreachable after login attempt",
+                "authenticated": False,
+                "server_online": server_online,
+                "connected": connected,
+                "error": connection_status.get('error'),
+                "trading_mode": trading_mode,
+            }
+
+        except httpx.ConnectError as e:
+            logger.error("Automated login failed: gateway unreachable: %s", e)
+            return {
+                "success": False,
+                "message": "Could not reach IBKR Gateway. Is it running on port 5055?",
+                "authenticated": False,
+                "server_online": False,
+                "connected": False,
+                "error": str(e),
+                "trading_mode": trading_mode,
+            }
         except Exception as e:
             logger.error(f"Automated login failed: {str(e)}")
             return {
                 "success": False,
                 "message": f"Login failed: {str(e)}",
                 "authenticated": False,
-                "error": str(e)
+                "server_online": False,
+                "connected": False,
+                "error": str(e),
+                "trading_mode": trading_mode,
             }
 
     async def _logout_existing_session(self) -> None:
         """Logout any existing session before new login."""
         try:
-            async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            async with httpx.AsyncClient(timeout=10.0, verify=self.ssl_verify) as client:
                 await client.post(f"{self.base_url}/logout")
         except Exception:
             # Ignore logout errors - session may not exist
@@ -333,7 +376,7 @@ class IBKRService:
             Dictionary with connection status, authentication state, and error details
         """
         try:
-            async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            async with httpx.AsyncClient(timeout=10.0, verify=self.ssl_verify) as client:
                 # Check tickle endpoint for server status
                 tickle_response = await client.get(f"{self.base_url}/tickle")
 
@@ -350,13 +393,14 @@ class IBKRService:
                         "gateway_url": self.base_url,
                         "tickle_data": tickle_data
                     }
-                elif tickle_response.status_code == 401:
-                    # Gateway is online but requires authentication
+                elif tickle_response.status_code in (401, 403):
+                    # Gateway is online but requires authentication. This is a normal pre-login state,
+                    # so surface it as a message (not an error) to avoid alarming UI warnings.
                     return {
                         "server_online": True,
                         "authenticated": False,
                         "connected": False,
-                        "error": "Authentication required. Please login to IBKR Gateway.",
+                        "message": "Authentication required. Please login to IBKR Gateway.",
                         "gateway_url": self.base_url
                     }
                 else:

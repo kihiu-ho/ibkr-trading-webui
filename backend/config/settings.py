@@ -1,6 +1,6 @@
 """Application configuration settings."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator, BeforeValidator
+from pydantic import BeforeValidator, SecretStr, field_validator
 from typing import Optional, Annotated
 
 
@@ -28,7 +28,12 @@ class Settings(BaseSettings):
     IBKR_ACCOUNT_ID: str = "DU1234567"  # Default demo account
     IBKR_API_BASE_URL: str = "https://127.0.0.1:5055/v1/api"
     IBKR_SSL_VERIFY: bool = False
-    
+    IBKR_USERNAME: Optional[str] = None
+    IBKR_USER: Optional[str] = None  # Back-compat alias for IBKR_USERNAME
+    IBKR_PASSWORD: Optional[SecretStr] = None
+    IBKR_TRADING_MODE: str = "paper"  # "paper" or "live"
+    IBKR_AUTO_LOGIN: bool = False
+
     # Database
     # NOTE: DATABASE_URL is required when running in Docker
     # Format: postgresql+psycopg2://username:password@host:port/database?sslmode=require

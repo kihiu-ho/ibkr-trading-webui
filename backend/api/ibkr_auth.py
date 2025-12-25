@@ -1,4 +1,6 @@
 """IBKR Gateway authentication endpoints."""
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Request
 from backend.services.ibkr_service import IBKRService
 from backend.config.settings import settings
@@ -14,6 +16,10 @@ class AutoLoginRequest(BaseModel):
     username: str
     password: str
     trading_mode: str = "paper"
+
+
+class AutoLoginEnvRequest(BaseModel):
+    trading_mode: Optional[str] = None
 
 
 @router.get("/status")
@@ -49,7 +55,8 @@ async def get_auth_status():
             "connected": connection_status.get('connected', False),
             "competing": connection_status.get('competing', False),
             "gateway_url": connection_status.get('gateway_url', settings.IBKR_API_BASE_URL),
-            "message": connection_status.get('message', '')
+            "message": connection_status.get('message', ''),
+            "trading_mode": (settings.IBKR_TRADING_MODE or "paper").lower(),
         }
 
         if connection_status.get('error'):
@@ -125,6 +132,44 @@ async def automated_login(request: AutoLoginRequest):
     except Exception as e:
         logger.error(f"Automated login failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Automated login failed: {str(e)}")
+
+
+@router.post("/auto-login/env")
+async def automated_login_from_env(request: AutoLoginEnvRequest):
+    """
+    Perform automated login using IBKR credentials configured in backend environment variables.
+
+    Required env vars:
+    - IBKR_USERNAME
+    - IBKR_PASSWORD
+    """
+    username = (settings.IBKR_USERNAME or settings.IBKR_USER or "").strip()
+    password = settings.IBKR_PASSWORD.get_secret_value() if settings.IBKR_PASSWORD else ""
+    missing = []
+    if not username:
+        missing.append("IBKR_USERNAME")
+    if not password:
+        missing.append("IBKR_PASSWORD")
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{', '.join(missing)} not configured on the server",
+        )
+
+    trading_mode = (request.trading_mode or settings.IBKR_TRADING_MODE).lower()
+    if trading_mode not in {"paper", "live"}:
+        raise HTTPException(status_code=400, detail="trading_mode must be 'paper' or 'live'")
+
+    ibkr = IBKRService()
+    result = await ibkr.automated_login(
+        username=username,
+        password=password,
+        trading_mode=trading_mode,
+    )
+
+    if result.get("success"):
+        return result
+    raise HTTPException(status_code=400, detail=result.get("message", "Login failed"))
 
 
 @router.post("/logout")
@@ -256,4 +301,3 @@ async def check_gateway_health():
             "session_active": False,
             "error": str(e)
         }
-
